@@ -1081,9 +1081,13 @@
     }
 
     async function appendClipboard() {
+      var opToken = beginOperation('appendClipboard', 'Append Clipboard', 'btnAppendClipboard');
+      if (!opToken) return;
+
       if (!navigator.clipboard || !navigator.clipboard.readText) {
         setStatus('Zwischenablage konnte nicht gelesen werden. Browser-Unterstützung fehlt.', 'danger');
         addLog('Zwischenablage nicht verfügbar.', 'error');
+        endOperation(opToken);
         return;
       }
       try {
@@ -1102,6 +1106,8 @@
         console.error(e);
         setStatus('Zwischenablage konnte nicht gelesen werden: ' + e.message, 'danger');
         addLog('Zwischenablage-Lesen fehlgeschlagen: ' + e.message, 'error');
+      } finally {
+        endOperation(opToken);
       }
     }
 
@@ -1160,9 +1166,15 @@
     }
 
     async function insertStageResultFromClipboard(stageLabel) {
+      var label = stageLabel === 'denoise' ? 'Insert Denoise Result' : 'Insert SOP Result';
+      var buttonId = stageLabel === 'denoise' ? 'btnPasteDenoiseResult' : 'btnPasteSopResult';
+      var opToken = beginOperation('insertStageResultFromClipboard', label, buttonId);
+      if (!opToken) return;
+
       if (!navigator.clipboard || !navigator.clipboard.readText) {
         setStatus('Zwischenablage konnte nicht gelesen werden. Browser-Unterstützung fehlt.', 'danger');
         addLog('Zwischenablage nicht verfügbar.', 'error');
+        endOperation(opToken);
         return;
       }
 
@@ -1193,6 +1205,8 @@
         console.error(e);
         setStatus('Ergebnis konnte nicht aus der Zwischenablage übernommen werden: ' + e.message, 'danger');
         addLog('Ergebnis-Import aus Zwischenablage fehlgeschlagen: ' + e.message, 'error');
+      } finally {
+        endOperation(opToken);
       }
     }
 
@@ -1321,6 +1335,44 @@
       btn.textContent = busy ? (busyText || 'Läuft …') : btn.dataset.originalText;
     }
 
+    var activeOperation = null;
+    var guardedButtonIds = [
+      'btnRunDenoise',
+      'btnRunSop',
+      'btnRunAll',
+      'btnAppendClipboard',
+      'btnPasteDenoiseResult',
+      'btnPasteSopResult',
+      'btnSaveToObsidian',
+      'btnSendCardsToAnki'
+    ];
+
+    function setGuardedButtonsDisabled(disabled, exceptBtnId) {
+      guardedButtonIds.forEach(function(btnId) {
+        if (exceptBtnId && btnId === exceptBtnId) return;
+        var btn = document.getElementById(btnId);
+        if (btn) btn.disabled = !!disabled;
+      });
+    }
+
+    function beginOperation(opKey, label, buttonId) {
+      if (activeOperation) {
+        setStatus('Aktion "' + label + '" blockiert: "' + activeOperation.label + '" läuft bereits.', 'info');
+        addLog('Aktion blockiert (' + label + '): "' + activeOperation.label + '" läuft bereits.', 'info');
+        return null;
+      }
+      var token = uid();
+      activeOperation = { key: opKey, label: label, token: token };
+      setGuardedButtonsDisabled(true, buttonId);
+      return token;
+    }
+
+    function endOperation(token) {
+      if (!activeOperation || activeOperation.token !== token) return;
+      activeOperation = null;
+      setGuardedButtonsDisabled(false);
+    }
+
     async function runDenoise() {
       syncStateFromUI(true);
       var source = S.sourceText || '';
@@ -1330,11 +1382,18 @@
         return;
       }
 
+      var opToken = beginOperation('runDenoise', 'Run Denoise', 'btnRunDenoise');
+      if (!opToken) return;
+
       if (getStageMode('denoise') === 'manual') {
-        await copyStagePrompt('denoise');
-        setStatus('Denoising steht auf manuell. Prompt wurde kopiert. Führe den Schritt extern aus und setze das Ergebnis danach ein.', 'info');
-        addLog('Denoising im manuellen Modus vorbereitet.', 'info');
-        return;
+        try {
+          await copyStagePrompt('denoise');
+          setStatus('Denoising steht auf manuell. Prompt wurde kopiert. Führe den Schritt extern aus und setze das Ergebnis danach ein.', 'info');
+          addLog('Denoising im manuellen Modus vorbereitet.', 'info');
+          return;
+        } finally {
+          endOperation(opToken);
+        }
       }
 
       setBusy('btnRunDenoise', true, 'Denoise läuft …');
@@ -1354,6 +1413,7 @@
         addLog('Denoising fehlgeschlagen: ' + e.message, 'error');
       } finally {
         setBusy('btnRunDenoise', false);
+        endOperation(opToken);
       }
     }
 
@@ -1366,11 +1426,18 @@
         return;
       }
 
+      var opToken = beginOperation('runSop', 'Run SOP', 'btnRunSop');
+      if (!opToken) return;
+
       if (getStageMode('sop') === 'manual') {
-        await copyStagePrompt('sop');
-        setStatus('SOP-Erstellung steht auf manuell. Prompt wurde kopiert. Führe den Schritt extern aus und setze das Ergebnis danach ein.', 'info');
-        addLog('SOP-Erstellung im manuellen Modus vorbereitet.', 'info');
-        return;
+        try {
+          await copyStagePrompt('sop');
+          setStatus('SOP-Erstellung steht auf manuell. Prompt wurde kopiert. Führe den Schritt extern aus und setze das Ergebnis danach ein.', 'info');
+          addLog('SOP-Erstellung im manuellen Modus vorbereitet.', 'info');
+          return;
+        } finally {
+          endOperation(opToken);
+        }
       }
 
       setBusy('btnRunSop', true, 'SOP läuft …');
@@ -1391,6 +1458,7 @@
         addLog('SOP-Erstellung fehlgeschlagen: ' + e.message, 'error');
       } finally {
         setBusy('btnRunSop', false);
+        endOperation(opToken);
       }
     }
 
@@ -1402,6 +1470,9 @@
         addLog('Gesamte Kette abgebrochen: kein Rohmaterial.', 'error');
         return;
       }
+
+      var opToken = beginOperation('runAll', 'Run All', 'btnRunAll');
+      if (!opToken) return;
 
       setBusy('btnRunAll', true, 'Pipeline läuft …');
       setStatus('Gesamte Kette läuft …', 'info');
@@ -1444,6 +1515,7 @@
         addLog('Pipeline fehlgeschlagen: ' + e.message, 'error');
       } finally {
         setBusy('btnRunAll', false);
+        endOperation(opToken);
       }
     }
 
@@ -1698,6 +1770,9 @@
         return;
       }
 
+      var opToken = beginOperation('saveToObsidian', 'Save to Obsidian', 'btnSaveToObsidian');
+      if (!opToken) return;
+
       var fullUrl = buildObsidianUrl(base, routePrefix, path);
       var headers = { 'Content-Type': 'text/markdown; charset=utf-8' };
       var token = getSecret(OBSIDIAN_TOKEN_KEY);
@@ -1727,6 +1802,7 @@
         addLog('Obsidian-Speichern fehlgeschlagen: ' + e.message, 'error');
       } finally {
         setBusy('btnSaveToObsidian', false);
+        endOperation(opToken);
       }
     }
 
@@ -1817,6 +1893,9 @@
       var deck = S.ankiDeck || 'Default';
       var model = S.ankiModel || 'Basic';
 
+      var opToken = beginOperation('sendCardsToAnki', 'Send to Anki', 'btnSendCardsToAnki');
+      if (!opToken) return;
+
       setBusy('btnSendCardsToAnki', true, 'Sende …');
       setStatus('Versuche, Karten an AnkiConnect zu senden …', 'info');
       addLog(cards.length + ' Flashcard(s) werden an AnkiConnect gesendet.', 'info');
@@ -1833,6 +1912,7 @@
         addLog('AnkiConnect fehlgeschlagen: ' + e.message, 'error');
       } finally {
         setBusy('btnSendCardsToAnki', false);
+        endOperation(opToken);
       }
     }
 
