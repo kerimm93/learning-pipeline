@@ -789,9 +789,7 @@
         setSecret(OBSIDIAN_TOKEN_KEY, document.getElementById('obsidianToken').value.trim());
       }
 
-      updateFilenamePreview();
-      updatePreview();
-      updateKpis();
+      refreshDerivedUi();
     }
 
     function clampNumber(value, min, max, fallback) {
@@ -829,6 +827,10 @@
       document.getElementById('obsidianToken').value = getSecret(OBSIDIAN_TOKEN_KEY);
       renderFileList();
       renderLogs();
+      refreshDerivedUi();
+    }
+
+    function refreshDerivedUi() {
       updateFilenamePreview();
       updatePreview();
       updateKpis();
@@ -1442,7 +1444,6 @@
     }
 
     function updatePreview() {
-      syncStateFromUI(false);
       var host = document.getElementById('preview');
       var text = S.sopText || '';
       if (!text.trim()) {
@@ -1450,8 +1451,6 @@
         return;
       }
       host.innerHTML = renderMarkdown(text);
-      updateFilenamePreview();
-      updateKpis();
     }
 
     function renderMarkdown(md) {
