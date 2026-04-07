@@ -709,11 +709,10 @@
 
     function queueSave() {
       if (saveTimer) clearTimeout(saveTimer);
-      saveTimer = setTimeout(save, 180);
+      saveTimer = setTimeout(persistState, 180);
     }
 
-    function save() {
-      syncStateFromUI(false);
+    function persistState() {
       S._lastSaved = nowIso();
       try {
         localStorage.setItem(LKEY, JSON.stringify(S));
@@ -721,6 +720,11 @@
         console.error(e);
         setStatus('Konnte Workspace nicht im localStorage speichern: ' + e.message, 'danger');
       }
+    }
+
+    function save() {
+      syncStateFromUI(false);
+      persistState();
     }
 
     function load() {
@@ -857,7 +861,7 @@
 
     var debouncedUiSync = debounce(function() {
       syncStateFromUI(false);
-      save();
+      persistState();
     }, 180);
 
     function updateKpis() {
@@ -929,7 +933,7 @@
       document.getElementById('sourceText').value = [existing, appended].filter(Boolean).join('\n\n');
       S.sourceFiles = (S.sourceFiles || []).concat(sourceFiles);
       syncStateFromUI(false);
-      save();
+      persistState();
       renderFileList();
       setStatus('Dateien importiert. Rohtext wurde aktualisiert.', 'success');
     }
@@ -1091,7 +1095,7 @@
         var source = document.getElementById('sourceText');
         source.value = [source.value.trim(), txt.trim()].filter(Boolean).join('\n\n');
         syncStateFromUI(false);
-        save();
+        persistState();
         setStatus('Zwischenablage wurde angehängt.', 'success');
         addLog('Zwischenablage an Rohmaterial angehängt.', 'success');
       } catch (e) {
@@ -1173,7 +1177,7 @@
         if (stageLabel === 'denoise') {
           document.getElementById('denoisedText').value = txt.trim();
           syncStateFromUI(false);
-          save();
+          persistState();
           setStatus('Denoise-Ergebnis eingesetzt.', 'success');
           addLog('Denoise-Ergebnis aus Zwischenablage eingesetzt.', 'success');
           return;
@@ -1182,7 +1186,7 @@
         document.getElementById('sopText').value = txt.trim();
         syncStateFromUI(false);
         autoGenerateCards(false);
-        save();
+        persistState();
         setStatus('SOP-Ergebnis eingesetzt.', 'success');
         addLog('SOP-Ergebnis aus Zwischenablage eingesetzt.', 'success');
       } catch (e) {
@@ -1341,7 +1345,7 @@
         var result = await callAiForPrompt(source, 'denoise');
         document.getElementById('denoisedText').value = result;
         syncStateFromUI(false);
-        save();
+        persistState();
         setStatus('Denoising abgeschlossen.', 'success');
         addLog('Denoising erfolgreich abgeschlossen.', 'success');
       } catch (e) {
@@ -1378,7 +1382,7 @@
         document.getElementById('sopText').value = result;
         syncStateFromUI(false);
         autoGenerateCards(false);
-        save();
+        persistState();
         setStatus('SOP-Erstellung abgeschlossen.', 'success');
         addLog('SOP-Erstellung erfolgreich abgeschlossen.', 'success');
       } catch (e) {
@@ -1417,7 +1421,7 @@
         denoised = await callAiForPrompt(denoiseInput, 'denoise');
         document.getElementById('denoisedText').value = denoised;
         syncStateFromUI(false);
-        save();
+        persistState();
 
         if (getStageMode('sop') === 'manual') {
           await copyStagePrompt('sop');
@@ -1430,7 +1434,7 @@
         document.getElementById('sopText').value = sop;
         syncStateFromUI(false);
         autoGenerateCards(false);
-        save();
+        persistState();
 
         setStatus('Pipeline erfolgreich abgeschlossen.', 'success');
         addLog('Pipeline erfolgreich abgeschlossen.', 'success');
@@ -1913,7 +1917,7 @@
       document.getElementById('btnPasteDenoiseResult').addEventListener('click', function() { insertStageResultFromClipboard('denoise'); });
       document.getElementById('btnCopySopPrompt').addEventListener('click', function() { copyStagePrompt('sop'); });
       document.getElementById('btnPasteSopResult').addEventListener('click', function() { insertStageResultFromClipboard('sop'); });
-      document.getElementById('btnGenerateCards').addEventListener('click', function() { autoGenerateCards(true); save(); });
+      document.getElementById('btnGenerateCards').addEventListener('click', function() { autoGenerateCards(true); persistState(); });
       document.getElementById('btnSendCardsToAnki').addEventListener('click', sendCardsToAnki);
       document.getElementById('btnDownloadMarkdown').addEventListener('click', function() {
         syncStateFromUI(false);
@@ -1934,7 +1938,7 @@
       });
       document.getElementById('btnSaveConfig').addEventListener('click', function() {
         syncStateFromUI(true);
-        save();
+        persistState();
         setStatus('Einstellungen gespeichert.', 'success');
         addLog('Einstellungen gespeichert.', 'success');
       });
