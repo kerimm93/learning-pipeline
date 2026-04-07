@@ -1,0 +1,1978 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>ETL Learning Pipeline Hub</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg: #1a1a2e;
+      --bg-mid: #16213e;
+      --surface: #1e2a4a;
+      --surface-2: #162038;
+      --surface-3: #243555;
+      --border: #2a4a7f;
+      --border-light: #3a6aaf;
+      --ink: #e8e8f0;
+      --ink-light: #b9b9d2;
+      --ink-dim: #6f6f95;
+      --gold: #ffb347;
+      --gold-light: #ffd580;
+      --purple: #9b59b6;
+      --purple-dark: #7d3c98;
+      --green: #2ecc71;
+      --green-dark: #1a8a4a;
+      --red: #e74c3c;
+      --red-dark: #c0392b;
+      --blue: #3498db;
+      --blue-dark: #2176ae;
+      --teal: #1abc9c;
+      --teal-dark: #16a085;
+      --radius: 12px;
+    }
+
+    html, body { min-height: 100%; }
+    body {
+      background:
+        radial-gradient(ellipse at 20% 10%, rgba(155,89,182,0.14) 0%, transparent 45%),
+        radial-gradient(ellipse at 80% 0%, rgba(52,152,219,0.12) 0%, transparent 35%),
+        linear-gradient(180deg, #120f24 0%, var(--bg) 35%, #111827 100%);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .panel {
+      background: linear-gradient(180deg, rgba(30,42,74,0.96), rgba(22,32,56,0.98));
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 18px 50px rgba(0,0,0,0.35);
+    }
+
+    .section-title {
+      color: var(--gold);
+      font-size: 0.82rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .field, .area, .select {
+      width: 100%;
+      background: rgba(0,0,0,0.22);
+      border: 1px solid var(--border);
+      color: var(--ink);
+      border-radius: 10px;
+      outline: none;
+      transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
+    }
+
+    .field, .select { min-height: 46px; padding: 10px 14px; }
+    .area { min-height: 120px; padding: 12px 14px; resize: vertical; }
+    .field:focus, .area:focus, .select:focus {
+      border-color: var(--purple);
+      box-shadow: 0 0 0 3px rgba(155,89,182,0.18);
+      background: rgba(0,0,0,0.28);
+    }
+
+    .btn {
+      min-height: 44px;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      padding: 10px 16px;
+      font-weight: 700;
+      transition: transform .12s ease, box-shadow .16s ease, opacity .16s ease, border-color .16s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .btn:hover { transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--gold), #e8960a);
+      color: #1a0a00;
+      box-shadow: 0 8px 24px rgba(232,150,10,0.2);
+    }
+    .btn-secondary {
+      background: linear-gradient(135deg, var(--purple), var(--purple-dark));
+      color: white;
+      box-shadow: 0 8px 24px rgba(155,89,182,0.2);
+    }
+    .btn-success {
+      background: linear-gradient(135deg, var(--green), var(--green-dark));
+      color: white;
+      box-shadow: 0 8px 24px rgba(46,204,113,0.2);
+    }
+    .btn-info {
+      background: linear-gradient(135deg, var(--blue), var(--blue-dark));
+      color: white;
+      box-shadow: 0 8px 24px rgba(52,152,219,0.2);
+    }
+    .btn-danger {
+      background: linear-gradient(135deg, var(--red), var(--red-dark));
+      color: white;
+      box-shadow: 0 8px 24px rgba(231,76,60,0.2);
+    }
+    .btn-ghost {
+      background: rgba(255,255,255,0.04);
+      border-color: var(--border);
+      color: var(--ink);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.04);
+      color: var(--ink-light);
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .notice {
+      border-left: 3px solid var(--gold);
+      background: rgba(255,179,71,0.08);
+      color: var(--ink-light);
+      border-radius: 0 10px 10px 0;
+      padding: 12px 14px;
+      line-height: 1.6;
+    }
+    .notice.info { border-left-color: var(--blue); background: rgba(52,152,219,0.08); }
+    .notice.success { border-left-color: var(--green); background: rgba(46,204,113,0.08); }
+    .notice.danger { border-left-color: var(--red); background: rgba(231,76,60,0.10); }
+
+    .dropzone {
+      border: 2px dashed var(--border-light);
+      background: linear-gradient(180deg, rgba(36,53,85,0.45), rgba(22,32,56,0.55));
+      border-radius: 16px;
+      transition: border-color .16s ease, transform .16s ease, background .16s ease, box-shadow .16s ease;
+    }
+    .dropzone.dragover {
+      border-color: var(--gold);
+      background: linear-gradient(180deg, rgba(255,179,71,0.10), rgba(22,32,56,0.75));
+      box-shadow: 0 0 0 4px rgba(255,179,71,0.12);
+      transform: translateY(-1px);
+    }
+
+    .kpi {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .kpi .value {
+      color: var(--gold-light);
+      font-size: 1.15rem;
+      font-weight: 800;
+      line-height: 1.1;
+    }
+    .kpi .label {
+      color: var(--ink-light);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .log-item {
+      border-left: 2px solid rgba(255,255,255,0.08);
+      padding-left: 12px;
+      margin-left: 6px;
+    }
+    .log-item.info { border-left-color: var(--blue); }
+    .log-item.success { border-left-color: var(--green); }
+    .log-item.error { border-left-color: var(--red); }
+
+    .preview {
+      background: linear-gradient(180deg, rgba(11,18,32,0.88), rgba(12,20,38,0.96));
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 14px;
+      padding: 20px;
+      min-height: 320px;
+    }
+
+    .preview h1, .preview h2, .preview h3, .preview h4 {
+      color: var(--gold-light);
+      font-weight: 800;
+      margin-top: 1.2em;
+      margin-bottom: 0.55em;
+    }
+    .preview h1 { font-size: 1.6rem; }
+    .preview h2 { font-size: 1.15rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 6px; }
+    .preview h3 { font-size: 1rem; }
+    .preview p, .preview li, .preview blockquote {
+      color: var(--ink);
+      line-height: 1.75;
+    }
+    .preview ul, .preview ol {
+      padding-left: 1.35rem;
+      margin: 0.6rem 0 0.8rem;
+    }
+    .preview li { margin-bottom: 0.35rem; }
+    .preview code {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 1px 6px;
+      border-radius: 6px;
+      color: var(--gold-light);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.92em;
+    }
+    .preview pre {
+      background: rgba(0,0,0,0.38);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 14px;
+      overflow: auto;
+      margin: 1rem 0;
+    }
+    .preview pre code {
+      background: transparent;
+      border: 0;
+      padding: 0;
+      color: var(--ink);
+    }
+    .preview blockquote {
+      margin: 0.9rem 0;
+      padding: 0.3rem 0 0.3rem 1rem;
+      border-left: 3px solid var(--purple);
+      color: var(--ink-light);
+    }
+    .preview a {
+      color: #8fd0ff;
+      text-decoration: underline;
+    }
+    .preview hr {
+      border: 0;
+      border-top: 1px solid rgba(255,255,255,0.09);
+      margin: 1rem 0;
+    }
+    .preview table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+    }
+    .preview td, .preview th {
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 8px 10px;
+      text-align: left;
+    }
+
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .hidden-input { display: none; }
+
+    @media (max-width: 1024px) {
+      .preview { min-height: 260px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="mx-auto w-full max-w-7xl px-4 py-5 md:px-6 lg:px-8">
+    <header class="panel mb-4 overflow-hidden">
+      <div class="bg-gradient-to-r from-violet-900/70 via-slate-900/40 to-blue-900/60 px-5 py-5 md:px-6">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div class="space-y-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="badge">Single-File HTML</span>
+              <span class="badge">Vanilla JS</span>
+              <span class="badge">Tailwind via CDN</span>
+              <span class="badge">ETL → SOP → Output Hub</span>
+            </div>
+            <h1 class="text-2xl font-black tracking-tight text-amber-200 md:text-3xl">ETL Learning Pipeline Hub</h1>
+            <p class="max-w-3xl text-sm leading-6 text-slate-200/90 md:text-base">
+              Importiere Chat-Exporte, bereinige sie per KI, forme daraus belastbare SOPs und leite das Ergebnis direkt an Anki, Obsidian oder als Markdown-Datei weiter.
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button id="btnSaveConfig" class="btn btn-primary">⚙️ Einstellungen speichern</button>
+            <button id="btnDownloadState" class="btn btn-ghost">🧷 Workspace sichern</button>
+            <button id="btnClearWorkspace" class="btn btn-danger">🗑️ Workspace leeren</button>
+          </div>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3 border-t border-white/5 px-5 py-4 md:grid-cols-4 md:px-6">
+        <div class="kpi">
+          <div class="value" id="kpiFiles">0</div>
+          <div class="label">Dateien</div>
+        </div>
+        <div class="kpi">
+          <div class="value" id="kpiSourceChars">0</div>
+          <div class="label">Source-Zeichen</div>
+        </div>
+        <div class="kpi">
+          <div class="value" id="kpiDenoisedChars">0</div>
+          <div class="label">Denoised</div>
+        </div>
+        <div class="kpi">
+          <div class="value" id="kpiCards">0</div>
+          <div class="label">Flashcards</div>
+        </div>
+      </div>
+    </header>
+
+    <main class="grid grid-cols-1 gap-4 xl:grid-cols-12">
+      <section class="space-y-4 xl:col-span-8">
+        <div class="panel p-5 md:p-6">
+          <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div class="section-title">1. Ingest</div>
+              <h2 class="mt-1 text-xl font-bold text-white">Dateien importieren und Rohtext extrahieren</h2>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button id="btnSelectFiles" class="btn btn-secondary">📁 Dateien wählen</button>
+              <button id="btnAppendClipboard" class="btn btn-ghost">📋 Zwischenablage anhängen</button>
+            </div>
+          </div>
+
+          <input id="fileInput" class="hidden-input" type="file" multiple accept=".json,.md,.markdown,.txt,.text,.log,.csv,.html" />
+
+          <div id="dropzone" class="dropzone p-6 text-center">
+            <p class="text-lg font-bold text-white">Ziehe JSON-, Markdown- oder Textdateien hier hinein</p>
+            <p class="mt-2 text-sm text-slate-300">
+              Unterstützt mehrere Dateien. JSON wird heuristisch auf Chat-Inhalte analysiert. Markdown/TXT wird direkt übernommen.
+            </p>
+          </div>
+
+          <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <div class="lg:col-span-1">
+              <label class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">Importierte Dateien</label>
+              <div id="fileList" class="panel space-y-2 p-3 text-sm text-slate-200/90">
+                <div class="text-slate-400">Noch keine Dateien geladen.</div>
+              </div>
+              <div class="mt-3 notice info text-sm">
+                Tipp: Du kannst auch einfach direkt Rohtext unten einfügen und den Datei-Import überspringen.
+              </div>
+            </div>
+
+            <div class="lg:col-span-2">
+              <label for="sourceText" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">Rohmaterial / extrahierter Text</label>
+              <textarea id="sourceText" class="area min-h-[280px]" placeholder="Hier landet der extrahierte Chat-Text. Du kannst ihn auch manuell bearbeiten oder Text direkt einfügen."></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel p-5 md:p-6">
+          <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div class="section-title">2. Chaining</div>
+              <h2 class="mt-1 text-xl font-bold text-white">Denoising und SOP-Erstellung</h2>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button id="btnRunDenoise" class="btn btn-secondary">🧹 Nur Denoise</button>
+              <button id="btnRunSop" class="btn btn-info">🧱 Nur SOP</button>
+              <button id="btnRunAll" class="btn btn-success">⚡ Gesamte Kette</button>
+            </div>
+          </div>
+
+          <div class="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div class="rounded-2xl border border-white/8 bg-white/5 p-3">
+              <label for="denoiseMode" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">Denoise-Modus</label>
+              <select id="denoiseMode" class="select">
+                <option value="api">API-Call</option>
+                <option value="manual">Manuell · Prompt kopieren + Ergebnis einsetzen</option>
+              </select>
+            </div>
+            <div class="rounded-2xl border border-white/8 bg-white/5 p-3">
+              <label for="sopMode" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">SOP-Modus</label>
+              <select id="sopMode" class="select">
+                <option value="api">API-Call</option>
+                <option value="manual">Manuell · Prompt kopieren + Ergebnis einsetzen</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="mb-4 notice info text-sm">
+            Du kannst jede Stufe entweder direkt per API ausführen oder den vollständigen Prompt in die Zwischenablage kopieren, extern ausführen und das Ergebnis bewusst wieder in die Kette einsetzen.
+          </div>
+
+          <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div class="space-y-3">
+              <div>
+                <label for="denoisePrompt" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">Prompt 1 · Denoising</label>
+                <textarea id="denoisePrompt" class="area min-h-[190px]"></textarea>
+              </div>
+
+              <div class="flex flex-wrap gap-2">
+                <button id="btnCopyDenoisePrompt" class="btn btn-ghost">📋 Denoise-Prompt kopieren</button>
+                <button id="btnPasteDenoiseResult" class="btn btn-ghost">📥 Denoise-Ergebnis einsetzen</button>
+              </div>
+
+              <div>
+                <label for="denoisedText" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">Denoised Output</label>
+                <textarea id="denoisedText" class="area min-h-[220px]" placeholder="Hier erscheint das bereinigte Material."></textarea>
+              </div>
+            </div>
+
+            <div class="space-y-3">
+              <div>
+                <label for="sopPrompt" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">Prompt 2 · SOP</label>
+                <textarea id="sopPrompt" class="area min-h-[190px]"></textarea>
+              </div>
+
+              <div class="flex flex-wrap gap-2">
+                <button id="btnCopySopPrompt" class="btn btn-ghost">📋 SOP-Prompt kopieren</button>
+                <button id="btnPasteSopResult" class="btn btn-ghost">📥 SOP-Ergebnis einsetzen</button>
+              </div>
+
+              <div>
+                <label for="sopText" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">SOP Markdown</label>
+                <textarea id="sopText" class="area min-h-[220px]" placeholder="Hier erscheint die finale SOP in Markdown. Du kannst sie manuell bearbeiten."></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel p-5 md:p-6">
+          <div class="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div class="section-title">3. Live-Vorschau</div>
+              <h2 class="mt-1 text-xl font-bold text-white">Gerenderte SOP</h2>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button id="btnCopySop" class="btn btn-ghost">📄 SOP kopieren</button>
+              <button id="btnCopyMarkdownPackage" class="btn btn-ghost">🧾 Markdown-Paket kopieren</button>
+            </div>
+          </div>
+          <div id="preview" class="preview">
+            <p class="text-slate-400">Noch keine SOP vorhanden.</p>
+          </div>
+        </div>
+      </section>
+
+      <aside class="space-y-4 xl:col-span-4">
+        <div class="panel p-5 md:p-6">
+          <div class="section-title">Konfiguration</div>
+          <h2 class="mt-1 text-xl font-bold text-white">Provider, Modelle, API-Keys</h2>
+
+          <div class="mt-4 space-y-4">
+            <div>
+              <label class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">KI-Provider</label>
+              <div class="grid grid-cols-2 gap-2">
+                <label class="flex cursor-pointer items-center gap-2 rounded-xl border border-white/8 bg-white/5 px-3 py-3">
+                  <input type="radio" name="provider" value="openai" class="accent-amber-400" />
+                  <span class="font-semibold">OpenAI</span>
+                </label>
+                <label class="flex cursor-pointer items-center gap-2 rounded-xl border border-white/8 bg-white/5 px-3 py-3">
+                  <input type="radio" name="provider" value="anthropic" class="accent-amber-400" />
+                  <span class="font-semibold">Anthropic</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div>
+                <label for="openaiModel" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">OpenAI-Modell</label>
+                <input id="openaiModel" class="field" type="text" placeholder="z. B. gpt-4.1-mini" />
+              </div>
+              <div>
+                <label for="anthropicModel" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">Anthropic-Modell</label>
+                <input id="anthropicModel" class="field" type="text" placeholder="z. B. claude-3-7-sonnet-latest" />
+              </div>
+            </div>
+
+            <div>
+              <label for="temperature" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">Temperatur</label>
+              <input id="temperature" class="field" type="number" min="0" max="1" step="0.1" />
+            </div>
+
+            <div>
+              <label for="openaiKey" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">OpenAI API-Key</label>
+              <input id="openaiKey" class="field" type="password" placeholder="Wird separat im localStorage gespeichert" />
+            </div>
+
+            <div>
+              <label for="anthropicKey" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">Anthropic API-Key</label>
+              <input id="anthropicKey" class="field" type="password" placeholder="Wird separat im localStorage gespeichert" />
+            </div>
+
+            <div class="notice text-sm">
+              API-Keys werden getrennt vom eigentlichen Workspace gespeichert und landen nicht im Workspace-Export.
+            </div>
+
+            <div class="notice info text-sm">
+              Auch ohne API-Key kannst du die Pipeline verwenden: Prompt pro Stufe kopieren, extern in Claude, ChatGPT oder ein anderes Modell einfügen und das Ergebnis danach gezielt wieder einsetzen.
+            </div>
+          </div>
+        </div>
+
+        <div class="panel p-5 md:p-6">
+          <div class="section-title">Output Hub</div>
+          <h2 class="mt-1 text-xl font-bold text-white">Dateiname, Obsidian, Anki</h2>
+
+          <div class="mt-4 space-y-4">
+            <div>
+              <label for="dendronPrefix" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">Dendron-Prefix</label>
+              <input id="dendronPrefix" class="field mono" type="text" placeholder="dev.learning" />
+            </div>
+
+            <div>
+              <label for="obsidianFolder" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">Obsidian-Ordner</label>
+              <input id="obsidianFolder" class="field mono" type="text" placeholder="Inbox/SOPs" />
+            </div>
+
+            <div class="grid grid-cols-1 gap-3">
+              <div>
+                <label for="obsidianBaseUrl" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">Obsidian Base URL</label>
+                <input id="obsidianBaseUrl" class="field mono" type="text" placeholder="http://127.0.0.1:27124" />
+              </div>
+              <div>
+                <label for="obsidianRoutePrefix" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">Obsidian Route Prefix</label>
+                <input id="obsidianRoutePrefix" class="field mono" type="text" placeholder="/vault/" />
+              </div>
+              <div>
+                <label for="obsidianToken" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">Obsidian Token (optional)</label>
+                <input id="obsidianToken" class="field" type="password" placeholder="Optionaler Auth-Header" />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-3">
+              <div>
+                <label for="ankiDeck" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">Anki Deck</label>
+                <input id="ankiDeck" class="field" type="text" placeholder="Default" />
+              </div>
+              <div>
+                <label for="ankiModel" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">Anki Notetype</label>
+                <input id="ankiModel" class="field" type="text" placeholder="Basic" />
+              </div>
+            </div>
+
+            <div>
+              <label class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">Vorgeschlagener Dateiname</label>
+              <div id="filenamePreview" class="rounded-xl border border-white/8 bg-black/20 px-4 py-3 text-sm text-amber-200 mono">dev.learning.untitled.md</div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <button id="btnDownloadMarkdown" class="btn btn-primary">⬇️ Markdown laden</button>
+              <button id="btnSaveToObsidian" class="btn btn-info">🪨 Nach Obsidian senden</button>
+              <button id="btnGenerateCards" class="btn btn-secondary">🧠 Karten generieren</button>
+              <button id="btnSendCardsToAnki" class="btn btn-success">📮 Karten an Anki</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel p-5 md:p-6">
+          <div class="section-title">Flashcards</div>
+          <h2 class="mt-1 text-xl font-bold text-white">Front / Back Vorschau</h2>
+
+          <div class="mt-4 space-y-3">
+            <div>
+              <label for="flashFront" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">Front</label>
+              <textarea id="flashFront" class="area min-h-[110px]" placeholder="Wird aus der SOP abgeleitet oder manuell ergänzt."></textarea>
+            </div>
+            <div>
+              <label for="flashBack" class="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-slate-300">Back</label>
+              <textarea id="flashBack" class="area min-h-[150px]" placeholder="Wird aus der SOP abgeleitet oder manuell ergänzt."></textarea>
+            </div>
+            <div class="notice info text-sm">
+              Wenn im SOP-Text ein Abschnitt <span class="mono">## Flashcards</span> im Format <span class="mono">- Front: ... / Back: ...</span> enthalten ist, werden mehrere Karten automatisch erkannt.
+            </div>
+          </div>
+        </div>
+
+        <div class="panel p-5 md:p-6">
+          <div class="section-title">Aktivität</div>
+          <h2 class="mt-1 text-xl font-bold text-white">Status & Fehlerprotokoll</h2>
+          <div id="statusBar" class="notice info mt-4 text-sm">Bereit.</div>
+          <div id="activityLog" class="mt-4 max-h-[360px] space-y-3 overflow-auto text-sm">
+            <div class="text-slate-400">Noch keine Aktionen.</div>
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script>
+    var LKEY = 'etl_pipeline_hub_v1';
+    var OPENAI_KEY_KEY = 'etl_pipeline_hub_openai_key';
+    var ANTHROPIC_KEY_KEY = 'etl_pipeline_hub_anthropic_key';
+    var OBSIDIAN_TOKEN_KEY = 'etl_pipeline_hub_obsidian_token';
+    var APP_VERSION = 1;
+
+    var S = {};
+    var saveTimer = null;
+
+    function defaults() {
+      return {
+        version: APP_VERSION,
+        provider: 'openai',
+        denoiseMode: 'api',
+        sopMode: 'api',
+        openaiModel: 'gpt-4.1-mini',
+        anthropicModel: 'claude-3-7-sonnet-latest',
+        temperature: 0.2,
+        sourceFiles: [],
+        sourceText: '',
+        denoisedText: '',
+        sopText: '',
+        flashFront: '',
+        flashBack: '',
+        dendronPrefix: 'dev.learning',
+        obsidianFolder: 'Inbox/SOPs',
+        obsidianBaseUrl: 'http://127.0.0.1:27124',
+        obsidianRoutePrefix: '/vault/',
+        ankiDeck: 'Default',
+        ankiModel: 'Basic',
+        denoisePrompt: [
+          'Du bereinigst einen technischen Chat- oder Log-Export für eine Lern-Pipeline.',
+          'Entferne Smalltalk, Höflichkeitsfloskeln, Wiederholungen, Sackgassen, verworfene Lösungswege und irrelevanten Kontext.',
+          'Behalte nur belastbare technische Substanz: funktionierenden Code, klare Erklärungen, API-Aufrufe, Fehlermeldungen mit Ursachen, Debugging-Erkenntnisse, Designentscheidungen und Best Practices.',
+          'Wenn frühe Varianten verworfen wurden, behalte die funktionierende Endfassung und erwähne kurz, dass frühere Varianten verworfen wurden.',
+          'Strukturiere das Ergebnis als sauberes Markdown. Sprache: dieselbe wie im Quellmaterial.'
+        ].join('\n'),
+        sopPrompt: [
+          'Erstelle aus dem bereinigten Material eine SOP in Markdown.',
+          'Nutze genau diese Struktur:',
+          '# Titel',
+          '## Trigger',
+          '## Root Cause (RCA)',
+          '## Schritt-für-Schritt-Lösung',
+          '## Validierung',
+          '## Hinweise',
+          '## Flashcards',
+          '',
+          'Regeln:',
+          '- Unter "Schritt-für-Schritt-Lösung" eine nummerierte Liste mit atomaren, sofort ausführbaren Schritten.',
+          '- Unter "Validierung" konkrete Prüfschritte und erwartete Ergebnisse.',
+          '- Unter "Flashcards" genau 3 Karten im Format:',
+          '  - Front: ...',
+          '    Back: ...',
+          '- Kein unnötiger Text vor oder nach der SOP.',
+          '- Sprache: dieselbe wie im Quellmaterial.'
+        ].join('\n'),
+        logs: [],
+        _lastSaved: ''
+      };
+    }
+
+    function uid() {
+      return String(Date.now()) + String(Math.random()).slice(2, 8);
+    }
+
+    function nowIso() {
+      return new Date().toISOString();
+    }
+
+    function esc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function setStatus(msg, kind) {
+      var el = document.getElementById('statusBar');
+      if (!el) return;
+      el.className = 'notice mt-4 text-sm ' + (kind || 'info');
+      el.textContent = msg || 'Bereit.';
+    }
+
+    function addLog(message, kind) {
+      var item = {
+        id: uid(),
+        at: nowIso(),
+        kind: kind || 'info',
+        message: message || ''
+      };
+      S.logs = S.logs || [];
+      S.logs.unshift(item);
+      if (S.logs.length > 80) S.logs = S.logs.slice(0, 80);
+      renderLogs();
+      queueSave();
+    }
+
+    function renderLogs() {
+      var host = document.getElementById('activityLog');
+      if (!host) return;
+      var logs = S.logs || [];
+      if (!logs.length) {
+        host.innerHTML = '<div class="text-slate-400">Noch keine Aktionen.</div>';
+        return;
+      }
+      host.innerHTML = logs.map(function(log) {
+        return [
+          '<div class="log-item ' + esc(log.kind) + '">',
+          '<div class="text-[11px] uppercase tracking-[0.12em] text-slate-400">' + esc(new Date(log.at).toLocaleString('de-DE')) + '</div>',
+          '<div class="mt-1 leading-6 text-slate-100">' + esc(log.message) + '</div>',
+          '</div>'
+        ].join('');
+      }).join('');
+    }
+
+    function queueSave() {
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(save, 180);
+    }
+
+    function save() {
+      syncStateFromUI(false);
+      S._lastSaved = nowIso();
+      try {
+        localStorage.setItem(LKEY, JSON.stringify(S));
+      } catch (e) {
+        console.error(e);
+        setStatus('Konnte Workspace nicht im localStorage speichern: ' + e.message, 'danger');
+      }
+    }
+
+    function load() {
+      S = defaults();
+      try {
+        var raw = localStorage.getItem(LKEY);
+        if (raw) {
+          var parsed = JSON.parse(raw);
+          S = Object.assign(defaults(), parsed || {});
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function getSecret(key) {
+      try { return localStorage.getItem(key) || ''; } catch (e) { return ''; }
+    }
+
+    function setSecret(key, value) {
+      try {
+        if (value) localStorage.setItem(key, value);
+        else localStorage.removeItem(key);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function debounce(fn, wait) {
+      var timer = null;
+      return function() {
+        var args = arguments;
+        var ctx = this;
+        clearTimeout(timer);
+        timer = setTimeout(function() {
+          fn.apply(ctx, args);
+        }, wait);
+      };
+    }
+
+    function syncStateFromUI(includeSecrets) {
+      var providerNode = document.querySelector('input[name="provider"]:checked');
+      S.provider = providerNode ? providerNode.value : 'openai';
+      S.denoiseMode = document.getElementById('denoiseMode').value || 'api';
+      S.sopMode = document.getElementById('sopMode').value || 'api';
+      S.openaiModel = document.getElementById('openaiModel').value.trim();
+      S.anthropicModel = document.getElementById('anthropicModel').value.trim();
+      S.temperature = clampNumber(document.getElementById('temperature').value, 0, 1, 0.2);
+      S.sourceText = document.getElementById('sourceText').value;
+      S.denoisedText = document.getElementById('denoisedText').value;
+      S.sopText = document.getElementById('sopText').value;
+      S.flashFront = document.getElementById('flashFront').value;
+      S.flashBack = document.getElementById('flashBack').value;
+      S.denoisePrompt = document.getElementById('denoisePrompt').value;
+      S.sopPrompt = document.getElementById('sopPrompt').value;
+      S.dendronPrefix = document.getElementById('dendronPrefix').value.trim();
+      S.obsidianFolder = document.getElementById('obsidianFolder').value.trim();
+      S.obsidianBaseUrl = document.getElementById('obsidianBaseUrl').value.trim();
+      S.obsidianRoutePrefix = document.getElementById('obsidianRoutePrefix').value.trim();
+      S.ankiDeck = document.getElementById('ankiDeck').value.trim();
+      S.ankiModel = document.getElementById('ankiModel').value.trim();
+
+      if (includeSecrets) {
+        setSecret(OPENAI_KEY_KEY, document.getElementById('openaiKey').value.trim());
+        setSecret(ANTHROPIC_KEY_KEY, document.getElementById('anthropicKey').value.trim());
+        setSecret(OBSIDIAN_TOKEN_KEY, document.getElementById('obsidianToken').value.trim());
+      }
+
+      updateFilenamePreview();
+      updatePreview();
+      updateKpis();
+    }
+
+    function clampNumber(value, min, max, fallback) {
+      var n = Number(value);
+      if (!isFinite(n)) return fallback;
+      if (n < min) return min;
+      if (n > max) return max;
+      return n;
+    }
+
+    function applyStateToUI() {
+      document.getElementById('denoiseMode').value = S.denoiseMode || 'api';
+      document.getElementById('sopMode').value = S.sopMode || 'api';
+      document.getElementById('openaiModel').value = S.openaiModel || '';
+      document.getElementById('anthropicModel').value = S.anthropicModel || '';
+      document.getElementById('temperature').value = String(S.temperature != null ? S.temperature : 0.2);
+      document.getElementById('sourceText').value = S.sourceText || '';
+      document.getElementById('denoisedText').value = S.denoisedText || '';
+      document.getElementById('sopText').value = S.sopText || '';
+      document.getElementById('flashFront').value = S.flashFront || '';
+      document.getElementById('flashBack').value = S.flashBack || '';
+      document.getElementById('denoisePrompt').value = S.denoisePrompt || defaults().denoisePrompt;
+      document.getElementById('sopPrompt').value = S.sopPrompt || defaults().sopPrompt;
+      document.getElementById('dendronPrefix').value = S.dendronPrefix || 'dev.learning';
+      document.getElementById('obsidianFolder').value = S.obsidianFolder || 'Inbox/SOPs';
+      document.getElementById('obsidianBaseUrl').value = S.obsidianBaseUrl || 'http://127.0.0.1:27124';
+      document.getElementById('obsidianRoutePrefix').value = S.obsidianRoutePrefix || '/vault/';
+      document.getElementById('ankiDeck').value = S.ankiDeck || 'Default';
+      document.getElementById('ankiModel').value = S.ankiModel || 'Basic';
+      var provider = S.provider || 'openai';
+      var radio = document.querySelector('input[name="provider"][value="' + provider + '"]');
+      if (radio) radio.checked = true;
+      document.getElementById('openaiKey').value = getSecret(OPENAI_KEY_KEY);
+      document.getElementById('anthropicKey').value = getSecret(ANTHROPIC_KEY_KEY);
+      document.getElementById('obsidianToken').value = getSecret(OBSIDIAN_TOKEN_KEY);
+      renderFileList();
+      renderLogs();
+      updateFilenamePreview();
+      updatePreview();
+      updateKpis();
+    }
+
+    function bindAutoSave() {
+      var ids = [
+        'sourceText', 'denoisedText', 'sopText', 'flashFront', 'flashBack',
+        'denoiseMode', 'sopMode',
+        'openaiModel', 'anthropicModel', 'temperature',
+        'denoisePrompt', 'sopPrompt',
+        'dendronPrefix', 'obsidianFolder', 'obsidianBaseUrl',
+        'obsidianRoutePrefix', 'ankiDeck', 'ankiModel'
+      ];
+      ids.forEach(function(id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('input', debouncedUiSync);
+      });
+      document.querySelectorAll('input[name="provider"]').forEach(function(el) {
+        el.addEventListener('change', debouncedUiSync);
+      });
+    }
+
+    var debouncedUiSync = debounce(function() {
+      syncStateFromUI(false);
+      save();
+    }, 180);
+
+    function updateKpis() {
+      var fileCount = (S.sourceFiles || []).length;
+      var sourceChars = (S.sourceText || '').length;
+      var denoisedChars = (S.denoisedText || '').length;
+      var cards = parseFlashcardsFromSop(S.sopText || '').length;
+      if (!cards && (S.flashFront || S.flashBack)) cards = 1;
+      document.getElementById('kpiFiles').textContent = String(fileCount);
+      document.getElementById('kpiSourceChars').textContent = formatCompact(sourceChars);
+      document.getElementById('kpiDenoisedChars').textContent = formatCompact(denoisedChars);
+      document.getElementById('kpiCards').textContent = String(cards);
+    }
+
+    function formatCompact(n) {
+      if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+      if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+      return String(n);
+    }
+
+    function renderFileList() {
+      var host = document.getElementById('fileList');
+      var files = S.sourceFiles || [];
+      if (!files.length) {
+        host.innerHTML = '<div class="text-slate-400">Noch keine Dateien geladen.</div>';
+        return;
+      }
+      host.innerHTML = files.map(function(file) {
+        return [
+          '<div class="rounded-xl border border-white/8 bg-black/15 p-3">',
+          '<div class="font-semibold text-white">' + esc(file.name || 'Unbenannt') + '</div>',
+          '<div class="mt-1 text-xs text-slate-400">' + esc(file.kind || 'text') + ' · ' + esc(String(file.chars || 0)) + ' Zeichen</div>',
+          '</div>'
+        ].join('');
+      }).join('');
+    }
+
+    async function handleFiles(files) {
+      if (!files || !files.length) return;
+      setStatus('Dateien werden verarbeitet …', 'info');
+      addLog(files.length + ' Datei(en) zur Verarbeitung erhalten.', 'info');
+
+      var combinedBlocks = [];
+      var sourceFiles = [];
+
+      for (var i = 0; i < files.length; i++) {
+        var file = files[i];
+        try {
+          var text = await file.text();
+          var extracted = await extractContentFromFile(file.name || ('datei-' + i), text);
+          if (extracted.trim()) {
+            combinedBlocks.push('<!-- FILE: ' + (file.name || ('datei-' + i)) + ' -->\n' + extracted.trim());
+          }
+          sourceFiles.push({
+            name: file.name || ('datei-' + i),
+            kind: detectKindFromName(file.name || ''),
+            chars: extracted.length
+          });
+          addLog('Datei verarbeitet: ' + (file.name || ('datei-' + i)), 'success');
+        } catch (e) {
+          console.error(e);
+          addLog('Fehler beim Lesen von ' + (file.name || ('datei-' + i)) + ': ' + e.message, 'error');
+          setStatus('Mindestens eine Datei konnte nicht gelesen werden: ' + e.message, 'danger');
+        }
+      }
+
+      var appended = combinedBlocks.join('\n\n---\n\n').trim();
+      var existing = document.getElementById('sourceText').value.trim();
+      document.getElementById('sourceText').value = [existing, appended].filter(Boolean).join('\n\n');
+      S.sourceFiles = (S.sourceFiles || []).concat(sourceFiles);
+      syncStateFromUI(false);
+      save();
+      renderFileList();
+      setStatus('Dateien importiert. Rohtext wurde aktualisiert.', 'success');
+    }
+
+    function detectKindFromName(name) {
+      var lower = String(name || '').toLowerCase();
+      if (lower.endsWith('.json')) return 'json';
+      if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'markdown';
+      if (lower.endsWith('.html')) return 'html';
+      return 'text';
+    }
+
+    async function extractContentFromFile(fileName, text) {
+      var kind = detectKindFromName(fileName);
+      if (kind === 'json') {
+        try {
+          var parsed = JSON.parse(text);
+          return extractTextFromJson(parsed).trim();
+        } catch (e) {
+          addLog('JSON in ' + fileName + ' war ungültig, nutze Rohtext.', 'error');
+          return text;
+        }
+      }
+      if (kind === 'html') {
+        return extractTextFromHtml(text);
+      }
+      return text;
+    }
+
+    function extractTextFromHtml(html) {
+      var clean = String(html || '')
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ');
+      return clean.trim();
+    }
+
+    function extractTextFromJson(data) {
+      var out = [];
+
+      function pushLine(line) {
+        var trimmed = normalizeWhitespace(line);
+        if (trimmed) out.push(trimmed);
+      }
+
+      function fromChatLikeMessage(msg) {
+        if (!msg) return false;
+        var role = msg.role || (msg.author && msg.author.role) || (msg.message && msg.message.author && msg.message.author.role) || '';
+        var content = '';
+        if (typeof msg.content === 'string') content = msg.content;
+        else if (Array.isArray(msg.content)) {
+          content = msg.content.map(stringifyLeaf).filter(Boolean).join('\n');
+        } else if (msg.content && Array.isArray(msg.content.parts)) {
+          content = msg.content.parts.map(stringifyLeaf).filter(Boolean).join('\n');
+        } else if (msg.message && msg.message.content && Array.isArray(msg.message.content.parts)) {
+          content = msg.message.content.parts.map(stringifyLeaf).filter(Boolean).join('\n');
+        } else if (msg.text) content = msg.text;
+        else if (msg.body) content = msg.body;
+        else if (msg.message && typeof msg.message.content === 'string') content = msg.message.content;
+        if (content) {
+          pushLine((role ? role.toUpperCase() + ': ' : '') + content);
+          return true;
+        }
+        return false;
+      }
+
+      function stringifyLeaf(v) {
+        if (v == null) return '';
+        if (typeof v === 'string') return v;
+        if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+        if (Array.isArray(v)) return v.map(stringifyLeaf).filter(Boolean).join('\n');
+        if (typeof v === 'object') {
+          if (typeof v.text === 'string') return v.text;
+          if (typeof v.content === 'string') return v.content;
+          if (Array.isArray(v.parts)) return v.parts.map(stringifyLeaf).filter(Boolean).join('\n');
+        }
+        return '';
+      }
+
+      function walk(node) {
+        if (node == null) return;
+        if (typeof node === 'string') {
+          pushLine(node);
+          return;
+        }
+        if (typeof node === 'number' || typeof node === 'boolean') {
+          pushLine(String(node));
+          return;
+        }
+        if (Array.isArray(node)) {
+          node.forEach(walk);
+          return;
+        }
+        if (typeof node === 'object') {
+          if (fromChatLikeMessage(node)) return;
+
+          if (Array.isArray(node.messages)) {
+            node.messages.forEach(walk);
+            return;
+          }
+
+          if (node.mapping && typeof node.mapping === 'object') {
+            Object.keys(node.mapping)
+              .map(function(key) { return node.mapping[key]; })
+              .sort(function(a, b) {
+                var at = (a && a.message && a.message.create_time) || 0;
+                var bt = (b && b.message && b.message.create_time) || 0;
+                return at - bt;
+              })
+              .forEach(walk);
+            return;
+          }
+
+          var priorityKeys = ['title', 'prompt', 'response', 'answer', 'body', 'text', 'content', 'message', 'messages', 'parts'];
+          priorityKeys.forEach(function(key) {
+            if (node[key] != null) walk(node[key]);
+          });
+
+          Object.keys(node).forEach(function(key) {
+            if (priorityKeys.indexOf(key) >= 0) return;
+            walk(node[key]);
+          });
+        }
+      }
+
+      walk(data);
+
+      var seen = {};
+      return out.filter(function(line) {
+        var norm = line.toLowerCase();
+        if (seen[norm]) return false;
+        seen[norm] = true;
+        return true;
+      }).join('\n\n');
+    }
+
+    function normalizeWhitespace(text) {
+      return String(text || '')
+        .replace(/\r/g, '\n')
+        .replace(/\t/g, ' ')
+        .replace(/[ ]{2,}/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    }
+
+    async function appendClipboard() {
+      if (!navigator.clipboard || !navigator.clipboard.readText) {
+        setStatus('Zwischenablage konnte nicht gelesen werden. Browser-Unterstützung fehlt.', 'danger');
+        addLog('Zwischenablage nicht verfügbar.', 'error');
+        return;
+      }
+      try {
+        var txt = await navigator.clipboard.readText();
+        if (!txt.trim()) {
+          setStatus('Zwischenablage ist leer.', 'danger');
+          return;
+        }
+        var source = document.getElementById('sourceText');
+        source.value = [source.value.trim(), txt.trim()].filter(Boolean).join('\n\n');
+        syncStateFromUI(false);
+        save();
+        setStatus('Zwischenablage wurde angehängt.', 'success');
+        addLog('Zwischenablage an Rohmaterial angehängt.', 'success');
+      } catch (e) {
+        console.error(e);
+        setStatus('Zwischenablage konnte nicht gelesen werden: ' + e.message, 'danger');
+        addLog('Zwischenablage-Lesen fehlgeschlagen: ' + e.message, 'error');
+      }
+    }
+
+
+    function getStageMode(stageLabel) {
+      if (stageLabel === 'denoise') return S.denoiseMode || 'api';
+      if (stageLabel === 'sop') return S.sopMode || 'api';
+      return 'api';
+    }
+
+    function getStageInput(stageLabel) {
+      if (stageLabel === 'denoise') return S.sourceText || '';
+      if (stageLabel === 'sop') return (S.denoisedText || S.sourceText || '');
+      return '';
+    }
+
+    function buildManualPrompt(stageLabel, inputText) {
+      syncStateFromUI(false);
+      var stagePrompt = stageLabel === 'denoise' ? (S.denoisePrompt || '') : (S.sopPrompt || '');
+      var stageTitle = stageLabel === 'denoise' ? 'Denoising' : 'SOP-Erstellung';
+      var outputInstruction = stageLabel === 'denoise'
+        ? 'Gib nur das bereinigte Ergebnis in Markdown zurück. Keine Vorrede, keine Meta-Erklärung.'
+        : 'Gib nur die finale SOP in Markdown zurück. Keine Vorrede, keine Meta-Erklärung.';
+
+      return [
+        '# ' + stageTitle,
+        '',
+        '## Aufgabe',
+        'Bearbeite das folgende Material streng nach den Anweisungen.',
+        '',
+        '## Arbeitsanweisung',
+        stagePrompt.trim(),
+        '',
+        '## Eingabematerial',
+        '```text',
+        String(inputText || '').trim(),
+        '```',
+        '',
+        '## Ausgabeformat',
+        outputInstruction
+      ].join('\n');
+    }
+
+    async function copyStagePrompt(stageLabel) {
+      syncStateFromUI(false);
+      var input = getStageInput(stageLabel);
+      if (!String(input || '').trim()) {
+        var stageName = stageLabel === 'denoise' ? 'Denoising' : 'SOP-Erstellung';
+        setStatus('Kein Input für ' + stageName + ' vorhanden.', 'danger');
+        addLog('Prompt-Kopie abgebrochen: kein Input für ' + stageName + '.', 'error');
+        return;
+      }
+      var prompt = buildManualPrompt(stageLabel, input);
+      var label = stageLabel === 'denoise' ? 'Denoise-Prompt' : 'SOP-Prompt';
+      await copyText(prompt, label + ' in Zwischenablage kopiert.');
+    }
+
+    async function insertStageResultFromClipboard(stageLabel) {
+      if (!navigator.clipboard || !navigator.clipboard.readText) {
+        setStatus('Zwischenablage konnte nicht gelesen werden. Browser-Unterstützung fehlt.', 'danger');
+        addLog('Zwischenablage nicht verfügbar.', 'error');
+        return;
+      }
+
+      try {
+        var txt = await navigator.clipboard.readText();
+        if (!txt.trim()) {
+          setStatus('Zwischenablage ist leer.', 'danger');
+          addLog('Ergebnis-Einsetzen abgebrochen: Zwischenablage leer.', 'error');
+          return;
+        }
+
+        if (stageLabel === 'denoise') {
+          document.getElementById('denoisedText').value = txt.trim();
+          syncStateFromUI(false);
+          save();
+          setStatus('Denoise-Ergebnis eingesetzt.', 'success');
+          addLog('Denoise-Ergebnis aus Zwischenablage eingesetzt.', 'success');
+          return;
+        }
+
+        document.getElementById('sopText').value = txt.trim();
+        syncStateFromUI(false);
+        autoGenerateCards(false);
+        save();
+        setStatus('SOP-Ergebnis eingesetzt.', 'success');
+        addLog('SOP-Ergebnis aus Zwischenablage eingesetzt.', 'success');
+      } catch (e) {
+        console.error(e);
+        setStatus('Ergebnis konnte nicht aus der Zwischenablage übernommen werden: ' + e.message, 'danger');
+        addLog('Ergebnis-Import aus Zwischenablage fehlgeschlagen: ' + e.message, 'error');
+      }
+    }
+
+    function getSelectedProvider() {
+      var node = document.querySelector('input[name="provider"]:checked');
+      return node ? node.value : 'openai';
+    }
+
+    async function callAiForPrompt(userContent, stageLabel) {
+      syncStateFromUI(true);
+      var provider = getSelectedProvider();
+      var prompt = stageLabel === 'denoise' ? S.denoisePrompt : S.sopPrompt;
+      var stageName = stageLabel === 'denoise' ? 'Denoising' : 'SOP-Erstellung';
+      if (!userContent || !userContent.trim()) throw new Error('Es gibt kein Eingabematerial für ' + stageName + '.');
+
+      if (provider === 'openai') {
+        var openaiKey = getSecret(OPENAI_KEY_KEY);
+        if (!openaiKey) throw new Error('OpenAI API-Key fehlt.');
+        return callOpenAI(openaiKey, S.openaiModel || 'gpt-4.1-mini', prompt, userContent, S.temperature);
+      }
+
+      if (provider === 'anthropic') {
+        var anthropicKey = getSecret(ANTHROPIC_KEY_KEY);
+        if (!anthropicKey) throw new Error('Anthropic API-Key fehlt.');
+        return callAnthropic(anthropicKey, S.anthropicModel || 'claude-3-7-sonnet-latest', prompt, userContent, S.temperature);
+      }
+
+      throw new Error('Unbekannter Provider: ' + provider);
+    }
+
+    async function callOpenAI(apiKey, model, systemPrompt, userContent, temperature) {
+      var payload = {
+        model: model,
+        temperature: temperature,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent }
+        ]
+      };
+
+      var res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + apiKey
+        },
+        body: JSON.stringify(payload)
+      }, 90000);
+
+      if (!res.ok) {
+        var errorText = await safeReadText(res);
+        throw new Error('OpenAI-Fehler ' + res.status + ': ' + truncate(errorText, 280));
+      }
+
+      var data = await res.json();
+      var content = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+      if (!content) throw new Error('OpenAI-Antwort enthielt keinen Text.');
+      return content.trim();
+    }
+
+    async function callAnthropic(apiKey, model, systemPrompt, userContent, temperature) {
+      var payload = {
+        model: model,
+        max_tokens: 4000,
+        temperature: temperature,
+        system: systemPrompt,
+        messages: [
+          { role: 'user', content: userContent }
+        ]
+      };
+
+      var res = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify(payload)
+      }, 90000);
+
+      if (!res.ok) {
+        var errorText = await safeReadText(res);
+        throw new Error('Anthropic-Fehler ' + res.status + ': ' + truncate(errorText, 280));
+      }
+
+      var data = await res.json();
+      var parts = (data && data.content) || [];
+      var text = parts.map(function(part) {
+        return part && part.type === 'text' ? part.text : '';
+      }).filter(Boolean).join('\n\n');
+      if (!text) throw new Error('Anthropic-Antwort enthielt keinen Text.');
+      return text.trim();
+    }
+
+    async function fetchWithTimeout(url, options, timeoutMs) {
+      var ctrl = new AbortController();
+      var timer = setTimeout(function() { ctrl.abort(); }, timeoutMs || 30000);
+      try {
+        var finalOptions = Object.assign({}, options || {}, { signal: ctrl.signal });
+        return await fetch(url, finalOptions);
+      } catch (e) {
+        if (e && e.name === 'AbortError') {
+          throw new Error('Request-Timeout nach ' + (timeoutMs || 30000) + ' ms');
+        }
+        throw e;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function safeReadText(res) {
+      try { return await res.text(); } catch (e) { return ''; }
+    }
+
+    function truncate(text, maxLen) {
+      text = String(text || '');
+      return text.length > maxLen ? text.slice(0, maxLen - 1) + '…' : text;
+    }
+
+    function setBusy(btnId, busy, busyText) {
+      var btn = document.getElementById(btnId);
+      if (!btn) return;
+      if (!btn.dataset.originalText) btn.dataset.originalText = btn.textContent;
+      btn.disabled = !!busy;
+      btn.textContent = busy ? (busyText || 'Läuft …') : btn.dataset.originalText;
+    }
+
+    async function runDenoise() {
+      syncStateFromUI(true);
+      var source = S.sourceText || '';
+      if (!source.trim()) {
+        setStatus('Kein Rohmaterial vorhanden.', 'danger');
+        addLog('Denoising abgebrochen: kein Rohmaterial.', 'error');
+        return;
+      }
+
+      if (getStageMode('denoise') === 'manual') {
+        await copyStagePrompt('denoise');
+        setStatus('Denoising steht auf manuell. Prompt wurde kopiert. Führe den Schritt extern aus und setze das Ergebnis danach ein.', 'info');
+        addLog('Denoising im manuellen Modus vorbereitet.', 'info');
+        return;
+      }
+
+      setBusy('btnRunDenoise', true, 'Denoise läuft …');
+      setStatus('Denoising läuft …', 'info');
+      addLog('Denoising gestartet.', 'info');
+
+      try {
+        var result = await callAiForPrompt(source, 'denoise');
+        document.getElementById('denoisedText').value = result;
+        syncStateFromUI(false);
+        save();
+        setStatus('Denoising abgeschlossen.', 'success');
+        addLog('Denoising erfolgreich abgeschlossen.', 'success');
+      } catch (e) {
+        console.error(e);
+        setStatus('Denoising fehlgeschlagen: ' + e.message, 'danger');
+        addLog('Denoising fehlgeschlagen: ' + e.message, 'error');
+      } finally {
+        setBusy('btnRunDenoise', false);
+      }
+    }
+
+    async function runSop() {
+      syncStateFromUI(true);
+      var input = (S.denoisedText || S.sourceText || '').trim();
+      if (!input) {
+        setStatus('Kein Input für die SOP-Erstellung vorhanden.', 'danger');
+        addLog('SOP-Erstellung abgebrochen: kein Input.', 'error');
+        return;
+      }
+
+      if (getStageMode('sop') === 'manual') {
+        await copyStagePrompt('sop');
+        setStatus('SOP-Erstellung steht auf manuell. Prompt wurde kopiert. Führe den Schritt extern aus und setze das Ergebnis danach ein.', 'info');
+        addLog('SOP-Erstellung im manuellen Modus vorbereitet.', 'info');
+        return;
+      }
+
+      setBusy('btnRunSop', true, 'SOP läuft …');
+      setStatus('SOP-Erstellung läuft …', 'info');
+      addLog('SOP-Erstellung gestartet.', 'info');
+
+      try {
+        var result = await callAiForPrompt(input, 'sop');
+        document.getElementById('sopText').value = result;
+        syncStateFromUI(false);
+        autoGenerateCards(false);
+        save();
+        setStatus('SOP-Erstellung abgeschlossen.', 'success');
+        addLog('SOP-Erstellung erfolgreich abgeschlossen.', 'success');
+      } catch (e) {
+        console.error(e);
+        setStatus('SOP-Erstellung fehlgeschlagen: ' + e.message, 'danger');
+        addLog('SOP-Erstellung fehlgeschlagen: ' + e.message, 'error');
+      } finally {
+        setBusy('btnRunSop', false);
+      }
+    }
+
+    async function runAll() {
+      syncStateFromUI(true);
+      var source = S.sourceText || '';
+      if (!source.trim()) {
+        setStatus('Kein Rohmaterial vorhanden.', 'danger');
+        addLog('Gesamte Kette abgebrochen: kein Rohmaterial.', 'error');
+        return;
+      }
+
+      setBusy('btnRunAll', true, 'Pipeline läuft …');
+      setStatus('Gesamte Kette läuft …', 'info');
+      addLog('Gesamte Kette gestartet.', 'info');
+
+      try {
+        var denoiseInput = source;
+        var denoised = '';
+
+        if (getStageMode('denoise') === 'manual') {
+          await copyStagePrompt('denoise');
+          setStatus('Pipeline angehalten: Denoising steht auf manuell. Prompt wurde kopiert. Setze danach das Ergebnis ein und starte den nächsten Schritt.', 'info');
+          addLog('Pipeline nach Schritt 1 angehalten: Denoising ist manuell.', 'info');
+          return;
+        }
+
+        denoised = await callAiForPrompt(denoiseInput, 'denoise');
+        document.getElementById('denoisedText').value = denoised;
+        syncStateFromUI(false);
+        save();
+
+        if (getStageMode('sop') === 'manual') {
+          await copyStagePrompt('sop');
+          setStatus('Pipeline angehalten: SOP-Erstellung steht auf manuell. Prompt wurde kopiert. Setze danach das Ergebnis ein.', 'info');
+          addLog('Pipeline nach Schritt 2 angehalten: SOP-Erstellung ist manuell.', 'info');
+          return;
+        }
+
+        var sop = await callAiForPrompt(denoised, 'sop');
+        document.getElementById('sopText').value = sop;
+        syncStateFromUI(false);
+        autoGenerateCards(false);
+        save();
+
+        setStatus('Pipeline erfolgreich abgeschlossen.', 'success');
+        addLog('Pipeline erfolgreich abgeschlossen.', 'success');
+      } catch (e) {
+        console.error(e);
+        setStatus('Pipeline fehlgeschlagen: ' + e.message, 'danger');
+        addLog('Pipeline fehlgeschlagen: ' + e.message, 'error');
+      } finally {
+        setBusy('btnRunAll', false);
+      }
+    }
+
+    function updatePreview() {
+      syncStateFromUI(false);
+      var host = document.getElementById('preview');
+      var text = S.sopText || '';
+      if (!text.trim()) {
+        host.innerHTML = '<p class="text-slate-400">Noch keine SOP vorhanden.</p>';
+        return;
+      }
+      host.innerHTML = renderMarkdown(text);
+      updateFilenamePreview();
+      updateKpis();
+    }
+
+    function renderMarkdown(md) {
+      var text = String(md || '').replace(/\r/g, '');
+      var codeBlocks = [];
+      text = text.replace(/```([\s\S]*?)```/g, function(_, code) {
+        var idx = codeBlocks.push('<pre><code>' + esc(code.trim()) + '</code></pre>') - 1;
+        return '§§CODEBLOCK_' + idx + '§§';
+      });
+
+      var lines = text.split('\n');
+      var html = [];
+      var inUl = false;
+      var inOl = false;
+      var paragraph = [];
+
+      function flushParagraph() {
+        if (paragraph.length) {
+          html.push('<p>' + inlineMarkdown(paragraph.join(' ')) + '</p>');
+          paragraph = [];
+        }
+      }
+      function closeLists() {
+        if (inUl) { html.push('</ul>'); inUl = false; }
+        if (inOl) { html.push('</ol>'); inOl = false; }
+      }
+
+      for (var i = 0; i < lines.length; i++) {
+        var raw = lines[i];
+        var line = raw.trim();
+
+        if (!line) {
+          flushParagraph();
+          closeLists();
+          continue;
+        }
+
+        if (/^#{1,6}\s/.test(line)) {
+          flushParagraph();
+          closeLists();
+          var lvl = Math.min(6, line.match(/^#+/)[0].length);
+          html.push('<h' + lvl + '>' + inlineMarkdown(line.replace(/^#{1,6}\s+/, '')) + '</h' + lvl + '>');
+          continue;
+        }
+
+        if (/^>\s?/.test(line)) {
+          flushParagraph();
+          closeLists();
+          html.push('<blockquote>' + inlineMarkdown(line.replace(/^>\s?/, '')) + '</blockquote>');
+          continue;
+        }
+
+        if (/^---+$/.test(line)) {
+          flushParagraph();
+          closeLists();
+          html.push('<hr />');
+          continue;
+        }
+
+        if (/^[-*]\s+/.test(line)) {
+          flushParagraph();
+          if (inOl) { html.push('</ol>'); inOl = false; }
+          if (!inUl) { html.push('<ul>'); inUl = true; }
+          html.push('<li>' + inlineMarkdown(line.replace(/^[-*]\s+/, '')) + '</li>');
+          continue;
+        }
+
+        if (/^\d+\.\s+/.test(line)) {
+          flushParagraph();
+          if (inUl) { html.push('</ul>'); inUl = false; }
+          if (!inOl) { html.push('<ol>'); inOl = true; }
+          html.push('<li>' + inlineMarkdown(line.replace(/^\d+\.\s+/, '')) + '</li>');
+          continue;
+        }
+
+        closeLists();
+        paragraph.push(line);
+      }
+
+      flushParagraph();
+      closeLists();
+
+      var joined = html.join('\n');
+      joined = joined.replace(/§§CODEBLOCK_(\d+)§§/g, function(_, idx) {
+        return codeBlocks[Number(idx)] || '';
+      });
+      return joined;
+    }
+
+    function inlineMarkdown(text) {
+      var out = esc(text || '');
+      out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+      out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+      out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+      return out;
+    }
+
+    function parseSopSections(md) {
+      var text = String(md || '').replace(/\r/g, '');
+      var lines = text.split('\n');
+      var title = '';
+      var current = null;
+      var sections = {};
+      var titleLines = [];
+
+      lines.forEach(function(line) {
+        var h1 = line.match(/^#\s+(.+)$/);
+        var h2 = line.match(/^##\s+(.+)$/);
+        if (h1) {
+          if (!title) title = h1[1].trim();
+          current = null;
+          return;
+        }
+        if (h2) {
+          current = h2[1].trim();
+          sections[current] = [];
+          return;
+        }
+        if (!title && line.trim()) titleLines.push(line.trim());
+        if (current) sections[current].push(line);
+      });
+
+      if (!title && titleLines.length) {
+        title = titleLines[0].replace(/^[-*]\s*/, '').trim();
+      }
+
+      Object.keys(sections).forEach(function(key) {
+        sections[key] = sections[key].join('\n').trim();
+      });
+
+      return { title: title || 'Untitled SOP', sections: sections };
+    }
+
+    function slugToDots(value) {
+      return String(value || '')
+        .toLowerCase()
+        .replace(/&/g, ' and ')
+        .replace(/[^a-z0-9äöüß]+/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/ /g, '.')
+        .replace(/\.+/g, '.')
+        .replace(/^\.|\.$/g, '');
+    }
+
+    function normalizeDots(value) {
+      return String(value || '')
+        .replace(/[^a-zA-Z0-9.]+/g, '.')
+        .replace(/\.+/g, '.')
+        .replace(/^\.|\.$/g, '');
+    }
+
+    function getSuggestedFilename() {
+      var parsed = parseSopSections(S.sopText || '');
+      var prefix = normalizeDots(S.dendronPrefix || 'dev.learning') || 'dev.learning';
+      var titleSlug = slugToDots(parsed.title || 'untitled') || 'untitled';
+      return prefix + '.' + titleSlug + '.md';
+    }
+
+    function updateFilenamePreview() {
+      var box = document.getElementById('filenamePreview');
+      if (!box) return;
+      box.textContent = getSuggestedFilename();
+    }
+
+    function buildMarkdownPackage() {
+      var parsed = parseSopSections(S.sopText || '');
+      var title = parsed.title || 'Untitled SOP';
+      var tags = Array.from(new Set(
+        ['sop', 'learning']
+          .concat(normalizeDots(S.dendronPrefix || 'dev.learning').split('.').filter(Boolean))
+          .concat(slugToDots(title).split('.').slice(0, 5).filter(Boolean))
+      ));
+
+      var yaml = [
+        '---',
+        'title: "' + String(title).replace(/"/g, '\\"') + '"',
+        'created: "' + nowIso() + '"',
+        'source_files:',
+      ];
+      (S.sourceFiles || []).forEach(function(file) {
+        yaml.push('  - "' + String(file.name || '').replace(/"/g, '\\"') + '"');
+      });
+      if (!(S.sourceFiles || []).length) yaml.push('  - "manual-input"');
+      yaml.push('tags:');
+      tags.forEach(function(tag) {
+        yaml.push('  - ' + tag);
+      });
+      yaml.push('pipeline:');
+      yaml.push('  provider: ' + (S.provider || getSelectedProvider()));
+      yaml.push('  dendron_filename: "' + getSuggestedFilename() + '"');
+      yaml.push('---');
+      yaml.push('');
+      yaml.push(S.sopText || '');
+
+      return yaml.join('\n');
+    }
+
+    async function copyText(text, successMessage) {
+      try {
+        await navigator.clipboard.writeText(text);
+        setStatus(successMessage || 'In Zwischenablage kopiert.', 'success');
+        addLog(successMessage || 'In Zwischenablage kopiert.', 'success');
+      } catch (e) {
+        console.error(e);
+        setStatus('Kopieren fehlgeschlagen: ' + e.message, 'danger');
+        addLog('Kopieren fehlgeschlagen: ' + e.message, 'error');
+      }
+    }
+
+    function downloadTextFile(filename, content) {
+      var blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    async function saveToObsidian() {
+      syncStateFromUI(true);
+      var markdown = buildMarkdownPackage();
+      if (!markdown.trim()) {
+        setStatus('Es gibt kein Markdown zum Speichern.', 'danger');
+        return;
+      }
+
+      var base = (S.obsidianBaseUrl || '').replace(/\/+$/, '');
+      var routePrefix = S.obsidianRoutePrefix || '/vault/';
+      var folder = (S.obsidianFolder || '').replace(/^\/+|\/+$/g, '');
+      var file = getSuggestedFilename();
+      var path = [folder, file].filter(Boolean).join('/');
+
+      if (!base) {
+        setStatus('Obsidian Base URL fehlt. Nutze alternativ den Download-Button.', 'danger');
+        addLog('Obsidian-Speichern abgebrochen: Base URL fehlt.', 'error');
+        return;
+      }
+
+      var fullUrl = buildObsidianUrl(base, routePrefix, path);
+      var headers = { 'Content-Type': 'text/markdown; charset=utf-8' };
+      var token = getSecret(OBSIDIAN_TOKEN_KEY);
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+
+      setBusy('btnSaveToObsidian', true, 'Speichere …');
+      setStatus('Versuche, Datei nach Obsidian zu senden …', 'info');
+      addLog('Obsidian-Speichern gestartet: ' + path, 'info');
+
+      try {
+        var res = await fetchWithTimeout(fullUrl, {
+          method: 'PUT',
+          headers: headers,
+          body: markdown
+        }, 20000);
+
+        if (!res.ok) {
+          var body = await safeReadText(res);
+          throw new Error('HTTP ' + res.status + ' · ' + truncate(body, 200));
+        }
+
+        setStatus('Datei erfolgreich an Obsidian gesendet.', 'success');
+        addLog('Datei erfolgreich an Obsidian gesendet: ' + path, 'success');
+      } catch (e) {
+        console.error(e);
+        setStatus('Obsidian-Speichern fehlgeschlagen: ' + e.message + ' · Nutze alternativ den Download-Button.', 'danger');
+        addLog('Obsidian-Speichern fehlgeschlagen: ' + e.message, 'error');
+      } finally {
+        setBusy('btnSaveToObsidian', false);
+      }
+    }
+
+    function buildObsidianUrl(base, routePrefix, path) {
+      var prefix = routePrefix || '/vault/';
+      if (!prefix.startsWith('/')) prefix = '/' + prefix;
+      if (!prefix.endsWith('/')) prefix += '/';
+      var encodedPath = path.split('/').map(encodeURIComponent).join('/');
+      return base + prefix + encodedPath;
+    }
+
+    function autoGenerateCards(notify) {
+      syncStateFromUI(false);
+      var cards = parseFlashcardsFromSop(S.sopText || '');
+      if (cards.length) {
+        document.getElementById('flashFront').value = cards[0].front;
+        document.getElementById('flashBack').value = cards[0].back;
+        syncStateFromUI(false);
+        if (notify !== false) {
+          setStatus(cards.length + ' Flashcards aus SOP erkannt.', 'success');
+          addLog(cards.length + ' Flashcards aus SOP erkannt.', 'success');
+        }
+        return cards;
+      }
+
+      var parsed = parseSopSections(S.sopText || '');
+      var title = parsed.title || 'Untitled SOP';
+      var trigger = parsed.sections['Trigger'] || '';
+      var rca = parsed.sections['Root Cause (RCA)'] || parsed.sections['Root Cause'] || '';
+      var steps = parsed.sections['Schritt-für-Schritt-Lösung'] || parsed.sections['Schritt-für-Schritt Loesung'] || '';
+      var validation = parsed.sections['Validierung'] || '';
+
+      var front = ['SOP: ' + title, trigger ? 'Trigger: ' + firstSentence(trigger) : ''].filter(Boolean).join('\n');
+      var back = [
+        rca ? 'Root Cause:\n' + normalizeWhitespace(rca) : '',
+        steps ? 'Lösung:\n' + normalizeWhitespace(steps) : '',
+        validation ? 'Validierung:\n' + normalizeWhitespace(validation) : ''
+      ].filter(Boolean).join('\n\n');
+
+      document.getElementById('flashFront').value = front.trim();
+      document.getElementById('flashBack').value = back.trim();
+      syncStateFromUI(false);
+      if (notify !== false) {
+        setStatus('Fallback-Flashcard aus SOP generiert.', 'success');
+        addLog('Fallback-Flashcard aus SOP generiert.', 'success');
+      }
+      return back.trim() ? [{ front: front.trim(), back: back.trim() }] : [];
+    }
+
+    function firstSentence(text) {
+      var t = normalizeWhitespace(text || '');
+      var m = t.match(/^(.{1,220}?[.!?])(\s|$)/);
+      return m ? m[1] : truncate(t, 220);
+    }
+
+    function parseFlashcardsFromSop(md) {
+      var text = String(md || '').replace(/\r/g, '');
+      var match = text.match(/^##\s+Flashcards\s*\n([\s\S]*?)(?=\n##\s|\n#\s|$)/im);
+      var block = match ? match[1].trim() : '';
+      if (!block) return [];
+
+      var regex = /-\s*Front:\s*([^\n]+)\n\s*Back:\s*([\s\S]*?)(?=\n-\s*Front:|\n\s*$|$)/g;
+      var cards = [];
+      var m;
+      while ((m = regex.exec(block)) !== null) {
+        cards.push({
+          front: normalizeWhitespace(m[1]),
+          back: normalizeWhitespace(m[2])
+        });
+      }
+      return cards.filter(function(card) {
+        return card.front && card.back;
+      });
+    }
+
+    async function sendCardsToAnki() {
+      syncStateFromUI(false);
+      var cards = parseFlashcardsFromSop(S.sopText || '');
+      if (!cards.length) {
+        cards = autoGenerateCards(false);
+      }
+      if (!cards.length) {
+        setStatus('Es konnten keine Flashcards abgeleitet werden.', 'danger');
+        addLog('Anki-Senden abgebrochen: keine Flashcards vorhanden.', 'error');
+        return;
+      }
+
+      var deck = S.ankiDeck || 'Default';
+      var model = S.ankiModel || 'Basic';
+
+      setBusy('btnSendCardsToAnki', true, 'Sende …');
+      setStatus('Versuche, Karten an AnkiConnect zu senden …', 'info');
+      addLog(cards.length + ' Flashcard(s) werden an AnkiConnect gesendet.', 'info');
+
+      try {
+        for (var i = 0; i < cards.length; i++) {
+          await addAnkiCard(cards[i], deck, model);
+        }
+        setStatus(cards.length + ' Karte(n) erfolgreich an Anki gesendet.', 'success');
+        addLog(cards.length + ' Karte(n) erfolgreich an Anki gesendet.', 'success');
+      } catch (e) {
+        console.error(e);
+        setStatus('AnkiConnect fehlgeschlagen: ' + e.message + ' · Läuft Anki mit aktivem AnkiConnect?', 'danger');
+        addLog('AnkiConnect fehlgeschlagen: ' + e.message, 'error');
+      } finally {
+        setBusy('btnSendCardsToAnki', false);
+      }
+    }
+
+    async function addAnkiCard(card, deckName, modelName) {
+      var payload = {
+        action: 'addNote',
+        version: 6,
+        params: {
+          note: {
+            deckName: deckName,
+            modelName: modelName,
+            fields: {
+              Front: card.front,
+              Back: card.back
+            },
+            options: {
+              allowDuplicate: false
+            },
+            tags: ['etl', 'sop', 'learning']
+          }
+        }
+      };
+
+      var res = await fetchWithTimeout('http://127.0.0.1:8765', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }, 10000);
+
+      if (!res.ok) {
+        throw new Error('HTTP ' + res.status + ' beim Kontakt zu AnkiConnect');
+      }
+
+      var data = await res.json();
+      if (data && data.error) throw new Error(String(data.error));
+      return data;
+    }
+
+    function downloadState() {
+      syncStateFromUI(false);
+      var payload = Object.assign({}, S, { exportedAt: nowIso() });
+      var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'etl-pipeline-workspace-' + nowIso().slice(0, 10) + '.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setStatus('Workspace exportiert.', 'success');
+      addLog('Workspace exportiert.', 'success');
+    }
+
+    function clearWorkspace() {
+      if (!window.confirm('Workspace wirklich leeren? API-Keys bleiben erhalten, aber Rohtext, SOP und Logs werden gelöscht.')) {
+        return;
+      }
+      var fresh = defaults();
+      S = fresh;
+      applyStateToUI();
+      save();
+      setStatus('Workspace geleert.', 'success');
+      addLog('Workspace geleert.', 'success');
+    }
+
+    function installEventHandlers() {
+      document.getElementById('btnSelectFiles').addEventListener('click', function() {
+        document.getElementById('fileInput').click();
+      });
+
+      document.getElementById('fileInput').addEventListener('change', function(e) {
+        handleFiles(Array.from(e.target.files || []));
+        e.target.value = '';
+      });
+
+      document.getElementById('btnAppendClipboard').addEventListener('click', appendClipboard);
+      document.getElementById('btnRunDenoise').addEventListener('click', runDenoise);
+      document.getElementById('btnRunSop').addEventListener('click', runSop);
+      document.getElementById('btnRunAll').addEventListener('click', runAll);
+      document.getElementById('btnCopyDenoisePrompt').addEventListener('click', function() { copyStagePrompt('denoise'); });
+      document.getElementById('btnPasteDenoiseResult').addEventListener('click', function() { insertStageResultFromClipboard('denoise'); });
+      document.getElementById('btnCopySopPrompt').addEventListener('click', function() { copyStagePrompt('sop'); });
+      document.getElementById('btnPasteSopResult').addEventListener('click', function() { insertStageResultFromClipboard('sop'); });
+      document.getElementById('btnGenerateCards').addEventListener('click', function() { autoGenerateCards(true); save(); });
+      document.getElementById('btnSendCardsToAnki').addEventListener('click', sendCardsToAnki);
+      document.getElementById('btnDownloadMarkdown').addEventListener('click', function() {
+        syncStateFromUI(false);
+        var filename = getSuggestedFilename();
+        var content = buildMarkdownPackage();
+        downloadTextFile(filename, content);
+        setStatus('Markdown-Datei wurde heruntergeladen.', 'success');
+        addLog('Markdown-Datei heruntergeladen: ' + filename, 'success');
+      });
+      document.getElementById('btnSaveToObsidian').addEventListener('click', saveToObsidian);
+      document.getElementById('btnCopySop').addEventListener('click', function() {
+        syncStateFromUI(false);
+        copyText(S.sopText || '', 'SOP in Zwischenablage kopiert.');
+      });
+      document.getElementById('btnCopyMarkdownPackage').addEventListener('click', function() {
+        syncStateFromUI(false);
+        copyText(buildMarkdownPackage(), 'Markdown-Paket in Zwischenablage kopiert.');
+      });
+      document.getElementById('btnSaveConfig').addEventListener('click', function() {
+        syncStateFromUI(true);
+        save();
+        setStatus('Einstellungen gespeichert.', 'success');
+        addLog('Einstellungen gespeichert.', 'success');
+      });
+      document.getElementById('btnDownloadState').addEventListener('click', downloadState);
+      document.getElementById('btnClearWorkspace').addEventListener('click', clearWorkspace);
+
+      var dropzone = document.getElementById('dropzone');
+      ['dragenter', 'dragover'].forEach(function(evtName) {
+        dropzone.addEventListener(evtName, function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          dropzone.classList.add('dragover');
+        });
+      });
+      ['dragleave', 'drop'].forEach(function(evtName) {
+        dropzone.addEventListener(evtName, function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (evtName === 'drop') {
+            handleFiles(Array.from((e.dataTransfer && e.dataTransfer.files) || []));
+          }
+          dropzone.classList.remove('dragover');
+        });
+      });
+
+      bindAutoSave();
+    }
+
+    function init() {
+      load();
+      applyStateToUI();
+      installEventHandlers();
+      setStatus('Bereit. Importiere eine Datei oder füge Rohtext ein.', 'info');
+      addLog('App initialisiert.', 'info');
+    }
+
+    window.addEventListener('load', init);
+  </script>
+</body>
+</html>
