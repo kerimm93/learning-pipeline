@@ -1682,9 +1682,70 @@
 
     function getSuggestedFilename() {
       var parsed = parseSopSections(S.sopText || '');
-      var prefix = normalizeDots(S.dendronPrefix || 'dev.learning') || 'dev.learning';
-      var titleSlug = slugToDots(parsed.title || 'untitled') || 'untitled';
-      return prefix + '.' + titleSlug + '.md';
+      var stopwords = {
+        and: true, the: true, und: true, mit: true, for: true,
+        von: true, der: true, die: true, das: true
+      };
+      var tokens = String(parsed.title || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9äöüß]+/gi, ' ')
+        .split(/\s+/)
+        .map(function(token) { return token.trim(); })
+        .filter(function(token) {
+          return token.length >= 3 && !stopwords[token];
+        });
+      var deduped = [];
+      var seen = {};
+      tokens.forEach(function(token) {
+        if (seen[token]) return;
+        seen[token] = true;
+        deduped.push(token);
+      });
+      var compact = deduped.slice(0, 6);
+      if (compact.length < 4 && deduped.length > compact.length) {
+        compact = deduped.slice(0, 4);
+      }
+      if (!compact.length) {
+        var stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+$/, '').replace('T', '-');
+        return 'note-' + stamp + '.md';
+      }
+      return compact.join('-') + '.md';
+    }
+
+    function buildMocDescription() {
+      var parsed = parseSopSections(S.sopText || '');
+      var title = normalizeWhitespace(parsed.title || '');
+      var trigger = firstSentence(parsed.sections['Trigger'] || '');
+      var rca = firstSentence(parsed.sections['Root Cause (RCA)'] || parsed.sections['Root Cause'] || '');
+      var steps = firstSentence(parsed.sections['Schritt-für-Schritt-Lösung'] || parsed.sections['Schritt-für-Schritt Loesung'] || '');
+      var summary = [trigger, rca, steps].filter(Boolean)[0] || firstSentence(S.sopText || '');
+      var line = [title, summary].filter(Boolean).join(': ');
+      return truncate(line || 'Technische SOP-Notiz gespeichert.', 120);
+    }
+
+    async function appendToMoc(base, routePrefix, folder, headers, filename, description) {
+      var mocName = 'code-knowledge-moc.md';
+      var mocPath = [folder, mocName].filter(Boolean).join('/');
+      var mocDate = new Date().toISOString().slice(0, 10);
+      var entry = [
+        '',
+        '',
+        '## ' + mocDate,
+        '',
+        '- [[' + filename.replace(/\.md$/i, '') + ']]',
+        '  - ' + truncate(normalizeWhitespace(description || ''), 120),
+        ''
+      ].join('\n');
+      var mocUrl = buildObsidianUrl(base, routePrefix, mocPath, 'append=true');
+      var res = await fetchWithTimeout(mocUrl, {
+        method: 'PUT',
+        headers: headers,
+        body: entry
+      }, 20000);
+      if (!res.ok) {
+        var body = await safeReadText(res);
+        throw new Error('MOC HTTP ' + res.status + ' · ' + truncate(body, 200));
+      }
     }
 
     function updateFilenamePreview() {
@@ -1794,8 +1855,10 @@
           throw new Error('HTTP ' + res.status + ' · ' + truncate(body, 200));
         }
 
+        var description = buildMocDescription();
+        await appendToMoc(base, routePrefix, folder, headers, file, description);
         setStatus('Datei erfolgreich an Obsidian gesendet.', 'success');
-        addLog('Datei erfolgreich an Obsidian gesendet: ' + path, 'success');
+        addLog('Datei erfolgreich an Obsidian gesendet: ' + path + ' (MOC ergänzt)', 'success');
       } catch (e) {
         console.error(e);
         setStatus('Obsidian-Speichern fehlgeschlagen: ' + e.message + ' · Nutze alternativ den Download-Button.', 'danger');
@@ -1806,12 +1869,14 @@
       }
     }
 
-    function buildObsidianUrl(base, routePrefix, path) {
+    function buildObsidianUrl(base, routePrefix, path, query) {
       var prefix = routePrefix || '/vault/';
       if (!prefix.startsWith('/')) prefix = '/' + prefix;
       if (!prefix.endsWith('/')) prefix += '/';
       var encodedPath = path.split('/').map(encodeURIComponent).join('/');
-      return base + prefix + encodedPath;
+      var url = base + prefix + encodedPath;
+      if (query) url += (query.startsWith('?') ? query : '?' + query);
+      return url;
     }
 
     function autoGenerateCards(notify) {
