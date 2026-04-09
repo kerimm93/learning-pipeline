@@ -448,9 +448,14 @@
 
         <div class="panel p-5 md:p-6">
           <div class="mb-4">
-            <div class="section-title">4. Generated Notes</div>
-            <h2 class="mt-1 text-xl font-bold text-white">Generierte Notizen</h2>
-            <p class="mt-2 text-sm text-slate-300">Vorbereitende Übersicht für mehrere Notizen pro Workspace.</p>
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div class="section-title">4. Generated Notes</div>
+                <h2 class="mt-1 text-xl font-bold text-white">Generierte Notizen</h2>
+                <p class="mt-2 text-sm text-slate-300">Vorbereitende Übersicht für mehrere Notizen pro Workspace.</p>
+              </div>
+              <button id="btnExtractGeneratedNotes" class="btn btn-secondary">🧩 Generate Notes</button>
+            </div>
           </div>
           <div id="generatedNotesList" class="space-y-3">
             <div class="text-slate-400">Noch keine generierten Notizen vorhanden.</div>
@@ -1428,6 +1433,7 @@
       'btnRunDenoise',
       'btnRunSop',
       'btnRunAll',
+      'btnExtractGeneratedNotes',
       'btnAppendClipboard',
       'btnPasteDenoiseResult',
       'btnPasteSopResult',
@@ -2031,6 +2037,135 @@
       });
     }
 
+    function parseFlashcardsFromMarkdownBlock(md) {
+      var text = String(md || '').replace(/\r/g, '');
+      var regex = /-\s*Front:\s*([^\n]+)\n\s*Back:\s*([\s\S]*?)(?=\n-\s*Front:|\n\s*$|$)/g;
+      var cards = [];
+      var m;
+      while ((m = regex.exec(text)) !== null) {
+        cards.push({
+          front: normalizeWhitespace(m[1]),
+          back: normalizeWhitespace(m[2])
+        });
+      }
+      return cards.filter(function(card) {
+        return card.front && card.back;
+      });
+    }
+
+    function removeFlashcardsSection(md) {
+      return String(md || '').replace(/\n?##\s+Flashcards\s*\n[\s\S]*$/im, '').trim();
+    }
+
+    function buildGeneratedFilename(title, index) {
+      var prefix = normalizeDots(S.dendronPrefix || 'dev.learning');
+      var slug = slugToDots(title || '') || ('note.' + String(index + 1));
+      var base = [prefix, slug].filter(Boolean).join('.');
+      return base + '.md';
+    }
+
+    function buildGeneratedSummary(title, markdown) {
+      var body = removeFlashcardsSection(markdown || '')
+        .split('\n')
+        .map(function(line) { return line.trim(); })
+        .filter(function(line) {
+          return line && !/^#{1,6}\s+/.test(line) && !/^[-*]\s+/.test(line) && !/^\d+\.\s+/.test(line);
+        })
+        .join(' ');
+      var sentence = firstSentence(body);
+      if (!sentence) sentence = 'Kurzzusammenfassung aus Segment nicht verfügbar.';
+      return truncate((title || 'Untitled Note') + ': ' + sentence, 180);
+    }
+
+    function extractGeneratedNotesFromMarkdown(markdown) {
+      var text = String(markdown || '').replace(/\r/g, '').trim();
+      if (!text) return { notes: [], usedFallback: true };
+
+      var lines = text.split('\n');
+      var headingRows = [];
+      for (var i = 0; i < lines.length; i++) {
+        var match = lines[i].match(/^(#{1,2})\s+(.+)$/);
+        if (!match) continue;
+        headingRows.push({ line: i, level: match[1].length, title: normalizeWhitespace(match[2]) });
+      }
+
+      var segments = [];
+      if (headingRows.length >= 2) {
+        for (var j = 0; j < headingRows.length; j++) {
+          var start = headingRows[j].line;
+          var end = j + 1 < headingRows.length ? headingRows[j + 1].line : lines.length;
+          var block = lines.slice(start, end).join('\n').trim();
+          if (!block) continue;
+          if (/^flashcards$/i.test(headingRows[j].title)) continue;
+          segments.push({
+            title: headingRows[j].title,
+            markdown: block
+          });
+        }
+      }
+
+      if (!segments.length) {
+        var parsed = parseSopSections(text);
+        var fallbackTitle = parsed.title || 'Untitled Note';
+        return {
+          notes: [{
+            title: fallbackTitle,
+            markdown: text
+          }],
+          usedFallback: true
+        };
+      }
+
+      return {
+        notes: segments,
+        usedFallback: false
+      };
+    }
+
+    function generateNotesFromCurrentSop() {
+      syncStateFromUI(false);
+      var sop = String(S.sopText || '').trim();
+      if (!sop) {
+        setStatus('Kein SOP-Text vorhanden. Bitte zuerst SOP erzeugen oder einfügen.', 'danger');
+        addLog('Generate Notes abgebrochen: SOP-Text fehlt.', 'error');
+        return;
+      }
+
+      var opToken = beginOperation('generateNotesFromCurrentSop', 'Generate Notes', 'btnExtractGeneratedNotes');
+      if (!opToken) return;
+      setBusy('btnExtractGeneratedNotes', true, 'Extrahiere …');
+
+      try {
+        var extraction = extractGeneratedNotesFromMarkdown(sop);
+        var generated = extraction.notes.map(function(segment, index) {
+          var segmentMarkdown = String(segment.markdown || '').trim();
+          var title = normalizeWhitespace(segment.title || 'Untitled Note') || 'Untitled Note';
+          var cards = parseFlashcardsFromMarkdownBlock(segmentMarkdown);
+          return normalizeGeneratedNote({
+            id: uid(),
+            title: title,
+            summary: buildGeneratedSummary(title, segmentMarkdown),
+            filename: buildGeneratedFilename(title, index),
+            markdown: removeFlashcardsSection(segmentMarkdown),
+            flashcards: cards,
+            createdAt: nowIso(),
+            updatedAt: nowIso()
+          });
+        });
+
+        S.generatedNotes = generated;
+        renderGeneratedNotes();
+        persistState();
+
+        var fallbackMsg = extraction.usedFallback ? ' (Fallback auf 1 Note).' : '';
+        setStatus(generated.length + ' generierte Notiz(en) erstellt' + fallbackMsg, 'success');
+        addLog('Generate Notes: ' + generated.length + ' Notiz(en) erstellt' + fallbackMsg, 'success');
+      } finally {
+        setBusy('btnExtractGeneratedNotes', false);
+        endOperation(opToken);
+      }
+    }
+
     async function sendCardsToAnki() {
       syncStateFromUI(false);
       var cards = parseFlashcardsFromSop(S.sopText || '');
@@ -2150,6 +2285,7 @@
       document.getElementById('btnPasteDenoiseResult').addEventListener('click', function() { insertStageResultFromClipboard('denoise'); });
       document.getElementById('btnCopySopPrompt').addEventListener('click', function() { copyStagePrompt('sop'); });
       document.getElementById('btnPasteSopResult').addEventListener('click', function() { insertStageResultFromClipboard('sop'); });
+      document.getElementById('btnExtractGeneratedNotes').addEventListener('click', generateNotesFromCurrentSop);
       document.getElementById('btnGenerateCards').addEventListener('click', function() { autoGenerateCards(true); persistState(); });
       document.getElementById('btnSendCardsToAnki').addEventListener('click', sendCardsToAnki);
       document.getElementById('btnDownloadMarkdown').addEventListener('click', function() {
