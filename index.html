@@ -2057,24 +2057,111 @@
       return String(md || '').replace(/\n?##\s+Flashcards\s*\n[\s\S]*$/im, '').trim();
     }
 
-    function buildGeneratedFilename(title, index) {
-      var prefix = normalizeDots(S.dendronPrefix || 'dev.learning');
-      var slug = slugToDots(title || '') || ('note.' + String(index + 1));
-      var base = [prefix, slug].filter(Boolean).join('.');
-      return base + '.md';
+    var SOP_STANDARD_SECTION_KEYS = {
+      trigger: true,
+      rootcause: true,
+      rootcauserca: true,
+      schrittfuerschrittloesung: true,
+      schrittfuerschrittlösung: true,
+      validierung: true,
+      hinweise: true,
+      flashcards: true
+    };
+
+    function normalizeSectionKey(value) {
+      return String(value || '')
+        .toLowerCase()
+        .replace(/\(.*?\)/g, '')
+        .replace(/[^a-z0-9äöüß]+/gi, '');
     }
 
-    function buildGeneratedSummary(title, markdown) {
-      var body = removeFlashcardsSection(markdown || '')
+    function isStandardSopSectionTitle(title) {
+      var key = normalizeSectionKey(title);
+      return !!SOP_STANDARD_SECTION_KEYS[key];
+    }
+
+    function isGenericGeneratedTitle(title) {
+      var t = normalizeWhitespace(title || '').toLowerCase();
+      return !t || t === 'untitled note' || t === 'untitled sop' || isStandardSopSectionTitle(t);
+    }
+
+    function collectNarrativeLines(markdown) {
+      return String(markdown || '')
+        .replace(/\r/g, '')
         .split('\n')
         .map(function(line) { return line.trim(); })
         .filter(function(line) {
-          return line && !/^#{1,6}\s+/.test(line) && !/^[-*]\s+/.test(line) && !/^\d+\.\s+/.test(line);
-        })
-        .join(' ');
-      var sentence = firstSentence(body);
-      if (!sentence) sentence = 'Kurzzusammenfassung aus Segment nicht verfügbar.';
-      return truncate((title || 'Untitled Note') + ': ' + sentence, 180);
+          if (!line) return false;
+          if (/^#{1,6}\s+/.test(line)) {
+            return !isStandardSopSectionTitle(line.replace(/^#{1,6}\s+/, ''));
+          }
+          if (/^[-*]\s+/.test(line) || /^\d+\.\s+/.test(line)) return false;
+          return true;
+        });
+    }
+
+    function extractSemanticTitleFromMarkdown(markdown, fallbackTitle, index) {
+      var cleanedFallback = normalizeWhitespace(fallbackTitle || '');
+      if (cleanedFallback && !isGenericGeneratedTitle(cleanedFallback)) return cleanedFallback;
+
+      var text = String(markdown || '').replace(/\r/g, '');
+      var lines = text.split('\n');
+      for (var i = 0; i < lines.length; i++) {
+        var heading = lines[i].match(/^#{1,2}\s+(.+)$/);
+        if (!heading) continue;
+        var headingTitle = normalizeWhitespace(heading[1]);
+        if (headingTitle && !isGenericGeneratedTitle(headingTitle)) return headingTitle;
+      }
+
+      var narrative = collectNarrativeLines(text).join(' ');
+      var sentence = firstSentence(narrative);
+      if (sentence) {
+        var candidate = normalizeWhitespace(sentence.replace(/[:;,.!?]+$/g, ''));
+        var words = candidate.split(/\s+/).slice(0, 10).join(' ');
+        if (words && !isGenericGeneratedTitle(words)) return words;
+      }
+      return 'Note ' + String(index + 1);
+    }
+
+    function buildSemanticGeneratedFilename(title, markdown, index) {
+      var prefix = normalizeDots(S.dendronPrefix || 'dev.learning');
+      var stopwords = {
+        and: true, the: true, und: true, mit: true, for: true, von: true, der: true, die: true, das: true,
+        ein: true, eine: true, eines: true, einer: true, zu: true, im: true, in: true, auf: true
+      };
+      var baseText = [title, collectNarrativeLines(markdown).slice(0, 2).join(' ')].join(' ');
+      var tokens = String(baseText || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9äöüß]+/gi, ' ')
+        .split(/\s+/)
+        .map(function(token) { return token.trim(); })
+        .filter(function(token) {
+          return token.length >= 3 && !stopwords[token] && !isStandardSopSectionTitle(token);
+        });
+      var seen = {};
+      var slug = tokens.filter(function(token) {
+        if (seen[token]) return false;
+        seen[token] = true;
+        return true;
+      }).slice(0, 6).join('-');
+      if (!slug) slug = 'note-' + String(index + 1);
+      return [prefix, slug].filter(Boolean).join('.') + '.md';
+    }
+
+    function buildGeneratedFilename(title, index) {
+      return buildSemanticGeneratedFilename(title, '', index);
+    }
+
+    function buildGeneratedSummary(title, markdown) {
+      var parsed = parseSopSections(markdown || '');
+      var trigger = firstSentence(parsed.sections['Trigger'] || '');
+      var rca = firstSentence(parsed.sections['Root Cause (RCA)'] || parsed.sections['Root Cause'] || '');
+      var steps = firstSentence(parsed.sections['Schritt-für-Schritt-Lösung'] || parsed.sections['Schritt-für-Schritt Loesung'] || '');
+      var merged = [trigger, rca, steps].filter(Boolean).join(' ');
+      var narrative = collectNarrativeLines(removeFlashcardsSection(markdown || '')).join(' ');
+      var sentence = firstSentence(merged || narrative);
+      if (!sentence) sentence = 'Inhaltliche Kurzbeschreibung aus dem Segment verfügbar.';
+      return truncate((title || 'Notiz') + ': ' + sentence, 180);
     }
 
     function extractGeneratedNotesFromMarkdown(markdown) {
@@ -2089,24 +2176,41 @@
         headingRows.push({ line: i, level: match[1].length, title: normalizeWhitespace(match[2]) });
       }
 
+      var h1Rows = headingRows.filter(function(row) { return row.level === 1; });
+      var h2Rows = headingRows.filter(function(row) { return row.level === 2; });
+      var nonStandardH2Rows = h2Rows.filter(function(row) { return !isStandardSopSectionTitle(row.title); });
+
       var segments = [];
-      if (headingRows.length >= 2) {
-        for (var j = 0; j < headingRows.length; j++) {
-          var start = headingRows[j].line;
-          var end = j + 1 < headingRows.length ? headingRows[j + 1].line : lines.length;
-          var block = lines.slice(start, end).join('\n').trim();
-          if (!block) continue;
-          if (/^flashcards$/i.test(headingRows[j].title)) continue;
+      if (h1Rows.length > 1) {
+        for (var j = 0; j < h1Rows.length; j++) {
+          var h1Start = h1Rows[j].line;
+          var h1End = j + 1 < h1Rows.length ? h1Rows[j + 1].line : lines.length;
+          var h1Block = lines.slice(h1Start, h1End).join('\n').trim();
+          if (!h1Block) continue;
           segments.push({
-            title: headingRows[j].title,
-            markdown: block
+            title: h1Rows[j].title,
+            markdown: h1Block
+          });
+        }
+      } else if (nonStandardH2Rows.length > 1) {
+        var firstSplitLine = nonStandardH2Rows[0].line;
+        var introBlock = lines.slice(0, firstSplitLine).join('\n').trim();
+        for (var k = 0; k < nonStandardH2Rows.length; k++) {
+          var h2Start = nonStandardH2Rows[k].line;
+          var h2End = k + 1 < nonStandardH2Rows.length ? nonStandardH2Rows[k + 1].line : lines.length;
+          var h2Block = lines.slice(h2Start, h2End).join('\n').trim();
+          if (!h2Block) continue;
+          if (k === 0 && introBlock) h2Block = introBlock + '\n\n' + h2Block;
+          segments.push({
+            title: nonStandardH2Rows[k].title,
+            markdown: h2Block
           });
         }
       }
 
       if (!segments.length) {
         var parsed = parseSopSections(text);
-        var fallbackTitle = parsed.title || 'Untitled Note';
+        var fallbackTitle = extractSemanticTitleFromMarkdown(text, parsed.title || 'Untitled Note', 0);
         return {
           notes: [{
             title: fallbackTitle,
@@ -2139,13 +2243,13 @@
         var extraction = extractGeneratedNotesFromMarkdown(sop);
         var generated = extraction.notes.map(function(segment, index) {
           var segmentMarkdown = String(segment.markdown || '').trim();
-          var title = normalizeWhitespace(segment.title || 'Untitled Note') || 'Untitled Note';
+          var title = extractSemanticTitleFromMarkdown(segmentMarkdown, segment.title || 'Untitled Note', index);
           var cards = parseFlashcardsFromMarkdownBlock(segmentMarkdown);
           return normalizeGeneratedNote({
             id: uid(),
             title: title,
             summary: buildGeneratedSummary(title, segmentMarkdown),
-            filename: buildGeneratedFilename(title, index),
+            filename: buildSemanticGeneratedFilename(title, segmentMarkdown, index),
             markdown: removeFlashcardsSection(segmentMarkdown),
             flashcards: cards,
             createdAt: nowIso(),
