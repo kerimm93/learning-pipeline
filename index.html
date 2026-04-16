@@ -456,9 +456,14 @@
                 <h2 class="mt-1 text-xl font-bold text-white">Generierte Notizen</h2>
                 <p class="mt-2 text-sm text-slate-300">Vorbereitende Übersicht für mehrere Notizen pro Workspace.</p>
               </div>
-              <button id="btnExtractGeneratedNotes" class="btn btn-secondary">🧩 Generate Notes</button>
+              <div class="flex flex-wrap gap-2">
+                <button id="btnLoadMoc" class="btn btn-ghost">🗂️ MOC laden</button>
+                <button id="btnExtractGeneratedNotes" class="btn btn-secondary">🧩 Generate Notes</button>
+              </div>
             </div>
           </div>
+          <input id="mocFileInput" class="hidden-input" type="file" accept=".md,.markdown,text/markdown,text/plain" />
+          <div id="mocStatus" class="mb-3 text-xs text-slate-400">Keine MOC geladen.</div>
           <div id="generatedNotesList" class="space-y-3">
             <div class="text-slate-400">Noch keine generierten Notizen vorhanden.</div>
           </div>
@@ -612,7 +617,7 @@
     var OPENAI_KEY_KEY = 'etl_pipeline_hub_openai_key';
     var ANTHROPIC_KEY_KEY = 'etl_pipeline_hub_anthropic_key';
     var OBSIDIAN_TOKEN_KEY = 'etl_pipeline_hub_obsidian_token';
-    var APP_VERSION = 1;
+    var APP_VERSION = 2;
 
     var S = {};
     var saveTimer = null;
@@ -631,6 +636,11 @@
         denoisedText: '',
         sopText: '',
         generatedNotes: [],
+        mocIndex: {
+          loadedAt: '',
+          sourceName: '',
+          entries: []
+        },
         flashFront: '',
         flashBack: '',
         dendronPrefix: 'dev.learning',
@@ -698,6 +708,40 @@
       return notes.map(function(note) {
         return normalizeGeneratedNote(note);
       });
+    }
+
+    function normalizeMocEntry(entry) {
+      var safe = entry || {};
+      var path = normalizeDots(stripMdExtension(String(safe.path || '').trim()).toLowerCase());
+      var summary = normalizeWhitespace(String(safe.summary || ''));
+      var segments = path ? path.split('.').filter(Boolean) : [];
+      var basename = getBasenameFromPath(path);
+      return {
+        path: path,
+        summary: summary,
+        segments: segments,
+        depth: segments.length,
+        basename: basename,
+        titleHint: String(safe.titleHint || basename || '').trim()
+      };
+    }
+
+    function normalizeMocEntries(entries) {
+      if (!Array.isArray(entries)) return [];
+      return entries.map(function(entry) {
+        return normalizeMocEntry(entry);
+      }).filter(function(entry) {
+        return !!entry.path;
+      });
+    }
+
+    function normalizeMocIndex(raw) {
+      var src = raw || {};
+      return {
+        loadedAt: String(src.loadedAt || ''),
+        sourceName: String(src.sourceName || ''),
+        entries: normalizeMocEntries(src.entries)
+      };
     }
 
     function esc(s) {
@@ -776,6 +820,7 @@
           S = Object.assign(defaults(), parsed || {});
         }
         S.generatedNotes = normalizeGeneratedNotes(S.generatedNotes);
+        S.mocIndex = normalizeMocIndex(S.mocIndex);
       } catch (e) {
         console.error(e);
       }
@@ -880,6 +925,7 @@
       updatePreview();
       updateKpis();
       renderGeneratedNotes();
+      renderMocStatus();
     }
 
     function bindAutoSave() {
@@ -972,6 +1018,155 @@
       queueSave();
     }
 
+    function stripMdExtension(name) {
+      return String(name || '').replace(/\.md$/i, '');
+    }
+
+    function getBasenameFromPath(path) {
+      var parts = String(path || '').split('.').filter(Boolean);
+      return parts.length ? parts[parts.length - 1] : '';
+    }
+
+    function tokenizeForMatching(text) {
+      var stop = {
+        der: true, die: true, das: true, und: true, oder: true, nicht: true,
+        the: true, and: true, for: true, with: true, von: true, mit: true,
+        eine: true, einer: true, eines: true, ein: true, im: true, in: true,
+        to: true, ist: true, sind: true
+      };
+      return String(text || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9äöüß]+/gi, ' ')
+        .split(/\s+/)
+        .map(function(token) { return token.trim(); })
+        .filter(function(token) {
+          return token.length >= 3 && !stop[token];
+        });
+    }
+
+    function parseMocMarkdown(text) {
+      var lines = String(text || '').replace(/\r/g, '').split('\n');
+      var entries = [];
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        var link = line.match(/^\s*[-*]\s*\[\[([^\]]+)\]\]/);
+        if (!link) continue;
+
+        var rawPath = normalizeDots(stripMdExtension(link[1] || '').trim().toLowerCase());
+        if (!rawPath) continue;
+
+        var summary = '';
+        var j = i + 1;
+        while (j < lines.length) {
+          var next = lines[j];
+          if (!next.trim()) {
+            j++;
+            continue;
+          }
+          var summaryMatch = next.match(/^\s{2,}[-*]\s+(.+)$/);
+          if (summaryMatch) {
+            summary = normalizeWhitespace(summaryMatch[1] || '');
+          }
+          break;
+        }
+
+        entries.push(normalizeMocEntry({ path: rawPath, summary: summary }));
+      }
+
+      var seen = {};
+      return entries.filter(function(entry) {
+        if (!entry.path) return false;
+        if (seen[entry.path]) return false;
+        seen[entry.path] = true;
+        return true;
+      });
+    }
+
+    function scoreMocEntryMatch(note, entry) {
+      var noteText = [note && note.title, note && note.summary].filter(Boolean).join(' ');
+      var noteTokens = tokenizeForMatching(noteText);
+      if (!noteTokens.length) return 0;
+
+      var entryTokens = tokenizeForMatching([
+        entry.path,
+        entry.summary,
+        entry.basename,
+        entry.titleHint,
+        String(entry.path || '').split('.').join(' ')
+      ].join(' '));
+      if (!entryTokens.length) return 0;
+
+      var entrySet = {};
+      entryTokens.forEach(function(token) { entrySet[token] = true; });
+
+      var overlap = 0;
+      noteTokens.forEach(function(token) {
+        if (entrySet[token]) overlap += 1;
+      });
+
+      if (!overlap) return 0;
+      var ratio = overlap / Math.max(noteTokens.length, 1);
+      return overlap * 3 + ratio + ((entry.depth || 0) * 0.01);
+    }
+
+    function suggestPathForGeneratedNote(note, mocEntries) {
+      var entries = Array.isArray(mocEntries) ? mocEntries : [];
+      if (!entries.length) return null;
+
+      var scored = entries.map(function(entry) {
+        return { entry: entry, score: scoreMocEntryMatch(note, entry) };
+      }).filter(function(row) {
+        return row.score > 0;
+      }).sort(function(a, b) {
+        return b.score - a.score;
+      });
+      if (!scored.length) return null;
+
+      var top = scored[0];
+      var prefixSegments = (top.entry.segments || []).slice(0, Math.max(1, (top.entry.depth || 0) - 1));
+      return {
+        path: top.entry.path,
+        prefix: prefixSegments.join('.'),
+        score: top.score
+      };
+    }
+
+    function renderMocStatus() {
+      var el = document.getElementById('mocStatus');
+      if (!el) return;
+      var moc = normalizeMocIndex(S.mocIndex);
+      if (!moc.entries.length) {
+        el.textContent = 'Keine MOC geladen.';
+        return;
+      }
+      var name = moc.sourceName || 'unbekannte Datei';
+      var at = moc.loadedAt ? new Date(moc.loadedAt).toLocaleString('de-DE') : 'unbekannt';
+      el.textContent = 'MOC geladen: ' + moc.entries.length + ' Einträge aus ' + name + ' (' + at + ')';
+    }
+
+    async function handleMocFileSelect(file) {
+      if (!file) return;
+      try {
+        var text = await file.text();
+        var entries = parseMocMarkdown(text);
+        S.mocIndex = normalizeMocIndex({
+          loadedAt: nowIso(),
+          sourceName: file.name || 'moc.md',
+          entries: entries
+        });
+        renderMocStatus();
+        renderGeneratedNotes();
+        persistState();
+        var message = entries.length + ' MOC-Einträge aus ' + (file.name || 'moc.md') + ' geladen.';
+        setStatus(message, 'success');
+        addLog(message, 'success');
+      } catch (e) {
+        console.error(e);
+        setStatus('MOC konnte nicht geladen werden: ' + e.message, 'danger');
+        addLog('MOC-Import fehlgeschlagen: ' + e.message, 'error');
+      }
+    }
+
     function renderGeneratedNotes() {
       var host = document.getElementById('generatedNotesList');
       if (!host) return;
@@ -981,14 +1176,18 @@
         host.innerHTML = '<div class="text-slate-400">Noch keine generierten Notizen vorhanden.</div>';
         return;
       }
+      var mocEntries = normalizeMocEntries((S.mocIndex && S.mocIndex.entries) || []);
       host.innerHTML = notes.map(function(note) {
         var fallbackFilename = note.filename || 'ohne-dateiname.md';
         var summary = note.summary || 'Keine Kurzbeschreibung hinterlegt.';
+        var suggestion = suggestPathForGeneratedNote(note, mocEntries);
+        var suggestionText = suggestion ? suggestion.path : 'Kein MOC-Vorschlag';
         return [
           '<article class="rounded-xl border border-white/8 bg-black/15 p-3">',
           '<h3 class="font-semibold text-white">' + esc(note.title) + '</h3>',
           '<div class="mt-1 text-xs text-amber-200 mono">' + esc(fallbackFilename) + '</div>',
           '<p class="mt-2 text-sm leading-6 text-slate-300">' + esc(summary) + '</p>',
+          '<div class="mt-2 text-xs text-slate-300"><span class="badge">MOC-Vorschlag</span> <span class="mono text-teal-200">' + esc(suggestionText) + '</span></div>',
           '</article>'
         ].join('');
       }).join('');
@@ -2468,6 +2667,14 @@
       document.getElementById('btnPasteDenoiseResult').addEventListener('click', function() { insertStageResultFromClipboard('denoise'); });
       document.getElementById('btnCopySopPrompt').addEventListener('click', function() { copyStagePrompt('sop'); });
       document.getElementById('btnPasteSopResult').addEventListener('click', function() { insertStageResultFromClipboard('sop'); });
+      document.getElementById('btnLoadMoc').addEventListener('click', function() {
+        document.getElementById('mocFileInput').click();
+      });
+      document.getElementById('mocFileInput').addEventListener('change', function(e) {
+        var file = (e.target.files && e.target.files[0]) || null;
+        handleMocFileSelect(file);
+        e.target.value = '';
+      });
       document.getElementById('btnExtractGeneratedNotes').addEventListener('click', generateNotesFromCurrentSop);
       document.getElementById('btnGenerateCards').addEventListener('click', function() { autoGenerateCards(true); persistState(); });
       document.getElementById('btnSendCardsToAnki').addEventListener('click', sendCardsToAnki);
