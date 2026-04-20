@@ -2109,15 +2109,40 @@
     function buildMocMarkdown(notes) {
       var lines = ['# Code Knowledge MOC', ''];
       notes.forEach(function(note) {
-        lines.push('## ' + normalizeWhitespace(note.title || 'Untitled Note'));
-        lines.push('');
-        lines.push('- Datei: `' + (note.filename || 'note.md') + '`');
-        lines.push('- Summary: ' + normalizeWhitespace(note.summary || ''));
-        lines.push('');
+        var wikiTarget = stripMdExtension(String(note.filename || 'note').trim()) || 'note';
+        lines.push('- [[' + wikiTarget + ']]');
+        lines.push('  - ' + normalizeWhitespace(note.summary || ''));
       });
-      lines.push('> Hinweis: Diese MOC ist Markdown-first und kompatibel mit Obsidian, NotebookLM und allgemeinen LLM-Workflows.');
       lines.push('');
       return lines.join('\n');
+    }
+
+    function yamlEscapeString(value) {
+      return String(value == null ? '' : value).replace(/"/g, '\\"');
+    }
+
+    function buildExportNoteMarkdown(note) {
+      var normalizedNote = normalizeGeneratedNote(note);
+      var title = normalizeWhitespace(normalizedNote.title || 'Untitled Note');
+      var summary = normalizeWhitespace(normalizedNote.summary || '');
+      var created = normalizedNote.createdAt || nowIso();
+      var updated = normalizedNote.updatedAt || nowIso();
+      var body = removeFlashcardsSection(String(normalizedNote.markdown || '').trim());
+      if (!/^#\s+/m.test(body)) {
+        body = '# ' + title + '\n\n' + body;
+      }
+
+      var frontmatter = [
+        '---',
+        'title: "' + yamlEscapeString(title) + '"',
+        'desc: "' + yamlEscapeString(summary) + '"',
+        'created: "' + yamlEscapeString(created) + '"',
+        'updated: "' + yamlEscapeString(updated) + '"',
+        '---',
+        ''
+      ].join('\n');
+
+      return frontmatter + body + '\n';
     }
 
     function collectAllFlashcards(notes) {
@@ -2148,11 +2173,8 @@
       var zip = new JSZip();
       notes.forEach(function(note) {
         var title = normalizeWhitespace(note.title || 'Untitled Note');
-        var markdown = String(note.markdown || '').trim();
-        if (!/^#\s+/m.test(markdown)) {
-          markdown = '# ' + title + '\n\n' + markdown;
-        }
-        zip.file(note.filename || buildGeneratedFilename(title, 0), markdown + '\n');
+        var filename = note.filename || buildGeneratedFilename(title, 0);
+        zip.file(filename, buildExportNoteMarkdown(note));
       });
 
       zip.file('code-knowledge-moc.md', buildMocMarkdown(notes));
