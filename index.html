@@ -2010,12 +2010,8 @@
     function buildMocDescription() {
       var parsed = parseSopSections(S.sopText || '');
       var title = normalizeWhitespace(parsed.title || '');
-      var trigger = firstSentence(parsed.sections['Trigger'] || '');
-      var rca = firstSentence(parsed.sections['Root Cause (RCA)'] || parsed.sections['Root Cause'] || '');
-      var steps = firstSentence(parsed.sections['Schritt-für-Schritt-Lösung'] || parsed.sections['Schritt-für-Schritt Loesung'] || '');
-      var summary = [trigger, rca, steps].filter(Boolean)[0] || firstSentence(S.sopText || '');
-      var line = [title, summary].filter(Boolean).join(': ');
-      return truncate(line || 'Technische SOP-Notiz gespeichert.', 120);
+      var summary = buildDeploymentSummary(title, S.sopText || '');
+      return truncate(summary || 'Technische SOP-Notiz gespeichert.', 120);
     }
 
     async function appendToMoc(base, routePrefix, folder, headers, filename, description) {
@@ -2452,16 +2448,69 @@
       return buildSemanticGeneratedFilename(title, '', index);
     }
 
-    function buildGeneratedSummary(title, markdown) {
-      var parsed = parseSopSections(markdown || '');
-      var trigger = firstSentence(parsed.sections['Trigger'] || '');
-      var rca = firstSentence(parsed.sections['Root Cause (RCA)'] || parsed.sections['Root Cause'] || '');
-      var steps = firstSentence(parsed.sections['Schritt-für-Schritt-Lösung'] || parsed.sections['Schritt-für-Schritt Loesung'] || '');
-      var merged = [trigger, rca, steps].filter(Boolean).join(' ');
-      var narrative = collectNarrativeLines(removeFlashcardsSection(markdown || '')).join(' ');
-      var sentence = firstSentence(merged || narrative);
+    function getSectionText(sections, keys) {
+      var source = sections || {};
+      for (var i = 0; i < keys.length; i++) {
+        var value = source[keys[i]];
+        if (normalizeWhitespace(value || '')) return String(value || '');
+      }
+      return '';
+    }
+
+    function normalizeSentence(text) {
+      var cleaned = normalizeWhitespace(String(text || '')
+        .replace(/^#{1,6}\s+/gm, '')
+        .replace(/^[-*]\s+/gm, '')
+        .replace(/^\d+\.\s+/gm, '')
+      );
+      cleaned = cleaned
+        .replace(/^(diese(?:r|s)?\s+notiz\s+beschreibt|in\s+dieser\s+note\s+geht\s+es\s+um)\s+/i, '')
+        .replace(/^(trigger|root cause(?:\s*\(rca\))?|schritt-für-schritt-lösung|schritt-für-schritt loesung|hinweise)\s*:\s*/i, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      cleaned = cleaned.replace(/[;:,.\-–—\s]+$/g, '').trim();
+      if (!cleaned) return '';
+      return cleaned + '.';
+    }
+
+    function compactTechnicalSentence(parts, fallback) {
+      var sentence = normalizeSentence(parts.filter(Boolean).join('; ')) || normalizeSentence(fallback || '');
       if (!sentence) sentence = 'Inhaltliche Kurzbeschreibung aus dem Segment verfügbar.';
-      return truncate((title || 'Notiz') + ': ' + sentence, 180);
+      return truncate(sentence, 220);
+    }
+
+    function summarizeRootCauseAndFix(parsed, markdown) {
+      var sections = (parsed && parsed.sections) || {};
+      var rca = normalizeSentence(firstSentence(getSectionText(sections, ['Root Cause (RCA)', 'Root Cause', 'Ursache', 'RCA'])));
+      var steps = normalizeSentence(firstSentence(getSectionText(sections, ['Schritt-für-Schritt-Lösung', 'Schritt-für-Schritt Loesung', 'Lösung', 'Loesung', 'Fix'])));
+      var hints = normalizeSentence(firstSentence(getSectionText(sections, ['Hinweise', 'Hinweis', 'Notes'])));
+      var trigger = normalizeSentence(firstSentence(getSectionText(sections, ['Trigger', 'Symptom'])));
+      var narrative = normalizeSentence(firstSentence(collectNarrativeLines(removeFlashcardsSection(markdown || '')).join(' ')));
+
+      var strong = [rca, steps, hints].filter(Boolean);
+      if (rca && steps) return compactTechnicalSentence([rca, steps, hints], narrative || trigger);
+      if (strong.length >= 2) return compactTechnicalSentence([strong[0], strong[1], trigger], narrative);
+      if (strong.length === 1) return compactTechnicalSentence([strong[0], trigger], narrative);
+      if (trigger && narrative && trigger !== narrative) return compactTechnicalSentence([narrative, trigger], narrative);
+      return compactTechnicalSentence([narrative || trigger], 'Inhaltliche Kurzbeschreibung aus dem Segment verfügbar.');
+    }
+
+    function buildDeploymentSummary(title, markdown) {
+      var parsed = parseSopSections(markdown || '');
+      var summary = summarizeRootCauseAndFix(parsed, markdown || '');
+      if ((summary || '').length < 120) {
+        var titleClean = normalizeWhitespace(title || '');
+        var loweredSummary = (summary || '').toLowerCase();
+        var loweredTitle = titleClean.toLowerCase();
+        if (titleClean && loweredSummary && loweredSummary.indexOf(loweredTitle) === -1) {
+          summary = compactTechnicalSentence([titleClean, summary], summary);
+        }
+      }
+      return truncate(summary, 220);
+    }
+
+    function buildGeneratedSummary(title, markdown) {
+      return buildDeploymentSummary(title, markdown);
     }
 
     function extractGeneratedNotesFromMarkdown(markdown) {
