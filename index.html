@@ -458,12 +458,15 @@
               </div>
               <div class="flex flex-wrap gap-2">
                 <button id="btnLoadMoc" class="btn btn-ghost">🗂️ MOC laden</button>
+                <button id="btnImportStructuredJson" class="btn btn-ghost">📥 JSON importieren</button>
                 <button id="btnExtractGeneratedNotes" class="btn btn-secondary">🧩 Generate Notes</button>
               </div>
             </div>
           </div>
           <input id="mocFileInput" class="hidden-input" type="file" accept=".md,.markdown,text/markdown,text/plain" />
+          <input id="structuredJsonInput" class="hidden-input" type="file" accept=".json,application/json,text/json,text/plain" />
           <div id="mocStatus" class="mb-3 text-xs text-slate-400">Keine MOC geladen.</div>
+          <div id="generatedNotesSource" class="mb-3 text-xs text-slate-400">Quelle: SOP</div>
           <div id="generatedNotesList" class="space-y-3">
             <div class="text-slate-400">Noch keine generierten Notizen vorhanden.</div>
           </div>
@@ -636,6 +639,12 @@
         denoisedText: '',
         sopText: '',
         generatedNotes: [],
+        structuredNotes: {
+          importedAt: '',
+          sourceName: '',
+          version: 1,
+          notes: []
+        },
         mocIndex: {
           loadedAt: '',
           sourceName: '',
@@ -708,6 +717,56 @@
       return notes.map(function(note) {
         return normalizeGeneratedNote(note);
       });
+    }
+
+    function normalizeStructuredNote(note) {
+      var safe = note || {};
+      return {
+        id: String(safe.id || uid()),
+        title: normalizeWhitespace(String(safe.title || '')),
+        summary: normalizeWhitespace(String(safe.summary || '')),
+        basePath: normalizeDots(String(safe.basePath || '')),
+        slug: slugToDots(String(safe.slug || '')).replace(/\./g, '-'),
+        type: normalizeWhitespace(String(safe.type || '')),
+        tags: Array.isArray(safe.tags) ? safe.tags.map(function(tag) {
+          return normalizeWhitespace(String(tag || ''));
+        }).filter(Boolean) : [],
+        content: safe.content && typeof safe.content === 'object' ? safe.content : null,
+        flashcards: Array.isArray(safe.flashcards) ? safe.flashcards : []
+      };
+    }
+
+    function normalizeStructuredNotes(notes) {
+      if (!Array.isArray(notes)) return [];
+      return notes.map(function(note) {
+        return normalizeStructuredNote(note);
+      });
+    }
+
+    function normalizeStructuredNotesPayload(raw) {
+      var src = raw || {};
+      return {
+        importedAt: String(src.importedAt || ''),
+        sourceName: String(src.sourceName || ''),
+        version: Number(src.version || 1) || 1,
+        notes: normalizeStructuredNotes(src.notes)
+      };
+    }
+
+    function validateStructuredNotesPayload(payload) {
+      if (!payload || typeof payload !== 'object') {
+        throw new Error('Structured JSON muss ein Objekt sein.');
+      }
+      if (!Array.isArray(payload.notes)) {
+        throw new Error('Structured JSON ist ungültig: "notes" muss ein Array sein.');
+      }
+      for (var i = 0; i < payload.notes.length; i++) {
+        var note = payload.notes[i] || {};
+        var title = normalizeWhitespace(String(note.title || ''));
+        var summary = normalizeWhitespace(String(note.summary || ''));
+        if (!title) throw new Error('Structured JSON ist ungültig: notes[' + i + '].title fehlt.');
+        if (!summary) throw new Error('Structured JSON ist ungültig: notes[' + i + '].summary fehlt.');
+      }
     }
 
     function normalizeMocEntry(entry) {
@@ -820,6 +879,7 @@
           S = Object.assign(defaults(), parsed || {});
         }
         S.generatedNotes = normalizeGeneratedNotes(S.generatedNotes);
+        S.structuredNotes = normalizeStructuredNotesPayload(S.structuredNotes);
         S.mocIndex = normalizeMocIndex(S.mocIndex);
       } catch (e) {
         console.error(e);
@@ -925,6 +985,7 @@
       updatePreview();
       updateKpis();
       renderGeneratedNotes();
+      renderGeneratedNotesSource();
       renderMocStatus();
     }
 
@@ -1142,6 +1203,15 @@
       var name = moc.sourceName || 'unbekannte Datei';
       var at = moc.loadedAt ? new Date(moc.loadedAt).toLocaleString('de-DE') : 'unbekannt';
       el.textContent = 'MOC geladen: ' + moc.entries.length + ' Einträge aus ' + name + ' (' + at + ')';
+    }
+
+    function renderGeneratedNotesSource() {
+      var el = document.getElementById('generatedNotesSource');
+      if (!el) return;
+      var hasStructured = !!((S.structuredNotes && S.structuredNotes.importedAt) || '');
+      var sourceLabel = hasStructured ? 'Structured JSON' : 'SOP';
+      var sourceName = hasStructured ? String(S.structuredNotes.sourceName || '').trim() : '';
+      el.textContent = 'Quelle: ' + sourceLabel + (sourceName ? ' (' + sourceName + ')' : '');
     }
 
     async function handleMocFileSelect(file) {
@@ -2513,6 +2583,95 @@
       return buildDeploymentSummary(title, markdown);
     }
 
+    function toMarkdownList(value, ordered) {
+      var items = Array.isArray(value) ? value : [value];
+      items = items.map(function(item) {
+        return normalizeWhitespace(String(item || ''));
+      }).filter(Boolean);
+      if (!items.length) return '';
+      return items.map(function(item, idx) {
+        return ordered ? String(idx + 1) + '. ' + item : '- ' + item;
+      }).join('\n');
+    }
+
+    function buildMarkdownFromStructuredNote(note) {
+      var normalized = normalizeStructuredNote(note || {});
+      var sections = [];
+      sections.push('# ' + (normalized.title || 'Untitled Note'));
+      var content = normalized.content || null;
+      if (!content) {
+        if (normalized.summary) sections.push(normalized.summary);
+        return sections.join('\n\n').trim();
+      }
+
+      var trigger = normalizeWhitespace(String(content.trigger || ''));
+      var rootCause = normalizeWhitespace(String(content.rootCause || ''));
+      var solution = toMarkdownList(content.solution || [], true);
+      var validation = toMarkdownList(content.validation || [], false);
+      var hints = toMarkdownList(content.notes || [], false);
+
+      if (trigger) sections.push('## Trigger\n' + trigger);
+      if (rootCause) sections.push('## Root Cause (RCA)\n' + rootCause);
+      if (solution) sections.push('## Schritt-für-Schritt-Lösung\n' + solution);
+      if (validation) sections.push('## Validierung\n' + validation);
+      if (hints) sections.push('## Hinweise\n' + hints);
+      if (sections.length === 1 && normalized.summary) sections.push(normalized.summary);
+      return sections.join('\n\n').trim();
+    }
+
+    function generatedNotesFromStructuredPayload(payload) {
+      var normalized = normalizeStructuredNotesPayload(payload || {});
+      return normalized.notes.map(function(note, index) {
+        var title = note.title || ('Note ' + String(index + 1));
+        var prefix = normalizeDots(note.basePath || S.dendronPrefix || 'dev.learning');
+        var slug = normalizeDots((note.slug || '').replace(/-/g, '.'));
+        if (!slug) slug = slugToDots(title).replace(/\./g, '-');
+        if (!slug) slug = 'note-' + String(index + 1);
+        var finalPath = normalizeDots([prefix, slug].filter(Boolean).join('.'));
+        var markdown = buildMarkdownFromStructuredNote(note);
+        return normalizeGeneratedNote({
+          id: note.id || uid(),
+          title: title,
+          summary: note.summary || buildGeneratedSummary(title, markdown),
+          filename: (finalPath || slug) + '.md',
+          markdown: markdown,
+          flashcards: Array.isArray(note.flashcards) ? note.flashcards : [],
+          createdAt: nowIso(),
+          updatedAt: nowIso()
+        });
+      });
+    }
+
+    async function importStructuredNotesJsonFile(file) {
+      if (!file) return;
+      try {
+        var text = await file.text();
+        var parsed;
+        try {
+          parsed = JSON.parse(text);
+        } catch (parseErr) {
+          throw new Error('Parse-Fehler: JSON ist ungültig (' + parseErr.message + ')');
+        }
+        validateStructuredNotesPayload(parsed);
+        var payload = normalizeStructuredNotesPayload(Object.assign({}, parsed, {
+          importedAt: nowIso(),
+          sourceName: file.name || 'structured-notes.json'
+        }));
+        var notes = generatedNotesFromStructuredPayload(payload);
+        S.structuredNotes = payload;
+        S.generatedNotes = notes;
+        refreshDerivedUi();
+        persistState();
+        var message = 'Structured JSON importiert: ' + notes.length + ' Notes erzeugt.';
+        setStatus(message, 'success');
+        addLog(message + ' Quelle: ' + (payload.sourceName || 'unbekannt') + '.', 'success');
+      } catch (e) {
+        console.error(e);
+        setStatus('Structured JSON Import fehlgeschlagen: ' + e.message, 'danger');
+        addLog('Structured JSON Import fehlgeschlagen: ' + e.message, 'error');
+      }
+    }
+
     function extractGeneratedNotesFromMarkdown(markdown) {
       var text = String(markdown || '').replace(/\r/g, '').trim();
       if (!text) return { notes: [], usedFallback: true };
@@ -2607,6 +2766,12 @@
         });
 
         S.generatedNotes = generated;
+        S.structuredNotes = normalizeStructuredNotesPayload({
+          importedAt: '',
+          sourceName: '',
+          version: 1,
+          notes: []
+        });
         renderGeneratedNotes();
         persistState();
 
@@ -2740,6 +2905,14 @@
       document.getElementById('btnPasteSopResult').addEventListener('click', function() { insertStageResultFromClipboard('sop'); });
       document.getElementById('btnLoadMoc').addEventListener('click', function() {
         document.getElementById('mocFileInput').click();
+      });
+      document.getElementById('btnImportStructuredJson').addEventListener('click', function() {
+        document.getElementById('structuredJsonInput').click();
+      });
+      document.getElementById('structuredJsonInput').addEventListener('change', function(e) {
+        var file = (e.target.files && e.target.files[0]) || null;
+        importStructuredNotesJsonFile(file);
+        e.target.value = '';
       });
       document.getElementById('mocFileInput').addEventListener('change', function(e) {
         var file = (e.target.files && e.target.files[0]) || null;
