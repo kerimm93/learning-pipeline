@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Zettelkasten-Ingestor — Systemanalyse & Zielarchitektur</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+
+  :root {
+    --bg:        #f7f6f2;
+    --bg-alt:    #efede7;
+    --bg-dark:   #1c1a16;
+    --ink:       #1c1a16;
+    --ink-mid:   #4a4640;
+    --ink-dim:   #8a8480;
+    --rule:      #dddad2;
+    --accent:    oklch(52% 0.16 45);   /* amber-brown */
+    --accent2:   oklch(52% 0.16 200);  /* teal */
+    --accent3:   oklch(52% 0.16 290);  /* indigo */
+    --good:      oklch(52% 0.16 150);  /* green */
+    --bad:       oklch(52% 0.16 20);   /* red */
+    --serif: 'IBM Plex Sans', system-ui, sans-serif;
+    --mono: 'IBM Plex Mono', monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 16px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Layout ── */
+  .page-wrap {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    min-height: 100vh;
+  }
+
+  /* ── Sidebar ── */
+  nav {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    background: var(--bg-dark);
+    color: #e8e4dc;
+    padding: 32px 0 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .nav-logo {
+    padding: 0 20px 28px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 16px;
+  }
+  .nav-logo-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+    margin-bottom: 6px;
+  }
+  .nav-logo-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #e8d9bc;
+    line-height: 1.4;
+  }
+
+  nav a {
+    display: block;
+    padding: 7px 20px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.5);
+    text-decoration: none;
+    transition: color 0.15s, background 0.15s;
+    border-left: 2px solid transparent;
+  }
+  nav a:hover, nav a.active {
+    color: #e8d9bc;
+    background: rgba(255,255,255,0.05);
+    border-left-color: var(--accent);
+  }
+  .nav-section-label {
+    padding: 20px 20px 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.22);
+  }
+
+  /* ── Main ── */
+  main {
+    padding: 56px 64px 120px 72px;
+    max-width: 860px;
+  }
+
+  /* ── Typography ── */
+  h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 10px;
+    color: var(--ink);
+  }
+  .doc-meta {
+    font-size: 13px;
+    color: var(--ink-dim);
+    margin-bottom: 48px;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .doc-meta span { display: flex; align-items: center; gap: 5px; }
+
+  h2 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin-top: 64px;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--rule);
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  h2 .section-id {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-family: var(--mono);
+  }
+
+  h3 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin-top: 32px;
+    margin-bottom: 10px;
+    color: var(--ink);
+  }
+
+  p { margin-bottom: 14px; color: var(--ink-mid); }
+  p strong { color: var(--ink); }
+
+  ul, ol {
+    padding-left: 1.4em;
+    margin-bottom: 14px;
+    color: var(--ink-mid);
+  }
+  li { margin-bottom: 5px; }
+  li strong { color: var(--ink); }
+
+  hr { border: 0; border-top: 1px solid var(--rule); margin: 40px 0; }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.85em;
+    background: var(--bg-alt);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 1px 6px;
+    color: var(--ink);
+  }
+
+  pre {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    background: var(--bg-dark);
+    color: #c8c4bc;
+    border-radius: 10px;
+    padding: 20px 24px;
+    overflow-x: auto;
+    margin: 20px 0;
+    line-height: 1.65;
+  }
+  pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: inherit;
+    color: inherit;
+  }
+  .comment { color: #6a6660; }
+  .key { color: #e8c97e; }
+  .val { color: #9fd4b0; }
+  .str { color: #c8a87a; }
+
+  /* ── Callout boxes ── */
+  .callout {
+    border-left: 3px solid var(--rule);
+    background: var(--bg-alt);
+    border-radius: 0 8px 8px 0;
+    padding: 14px 18px;
+    margin: 20px 0;
+    font-size: 0.92rem;
+  }
+  .callout.good  { border-left-color: var(--good);   background: oklch(97% 0.02 150); }
+  .callout.bad   { border-left-color: var(--bad);    background: oklch(97% 0.02 20); }
+  .callout.note  { border-left-color: var(--accent);  background: oklch(97% 0.02 45); }
+  .callout.info  { border-left-color: var(--accent2); background: oklch(97% 0.02 200); }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    opacity: 0.6;
+  }
+
+  /* ── Tag pills ── */
+  .tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 2px 9px;
+    border-radius: 999px;
+    margin: 2px;
+  }
+  .tag.keep    { background: oklch(93% 0.06 150); color: oklch(30% 0.12 150); }
+  .tag.remove  { background: oklch(93% 0.06 20);  color: oklch(30% 0.12 20); }
+  .tag.neutral { background: var(--bg-alt); color: var(--ink-dim); border: 1px solid var(--rule); }
+
+  /* ── Flow steps ── */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 24px 0;
+  }
+  .flow-step {
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    gap: 0 16px;
+  }
+  .flow-step-left {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 4px;
+  }
+  .flow-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+  .flow-num.user  { background: oklch(90% 0.08 45);  color: oklch(35% 0.12 45); }
+  .flow-num.ai    { background: oklch(90% 0.08 200); color: oklch(35% 0.12 200); }
+  .flow-num.app   { background: oklch(90% 0.08 290); color: oklch(35% 0.12 290); }
+  .flow-line {
+    width: 2px;
+    flex: 1;
+    min-height: 20px;
+    background: var(--rule);
+    margin: 4px 0;
+  }
+  .flow-body {
+    padding: 4px 0 24px;
+  }
+  .flow-actor {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .flow-actor.user { color: oklch(48% 0.14 45); }
+  .flow-actor.ai   { color: oklch(48% 0.14 200); }
+  .flow-actor.app  { color: oklch(48% 0.14 290); }
+  .flow-title { font-weight: 600; font-size: 0.95rem; color: var(--ink); }
+  .flow-desc  { font-size: 0.88rem; color: var(--ink-dim); margin-top: 3px; }
+
+  /* ── Data model card ── */
+  .schema-card {
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 20px 0;
+  }
+  .schema-header {
+    background: var(--bg-dark);
+    color: #e8d9bc;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .schema-header .type-badge {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.1);
+    letter-spacing: 0.06em;
+    color: rgba(255,255,255,0.5);
+  }
+  .schema-body { padding: 16px; }
+  .schema-field {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 4px 12px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--rule);
+    font-size: 0.88rem;
+  }
+  .schema-field:last-child { border-bottom: 0; }
+  .schema-field-name { font-family: var(--mono); font-weight: 600; font-size: 0.82rem; color: var(--ink); }
+  .schema-field-type { font-family: var(--mono); font-size: 0.78rem; color: var(--accent2); }
+  .schema-field-desc { color: var(--ink-mid); grid-column: 2; margin-top: -2px; font-size: 0.84rem; }
+
+  /* ── Roadmap ── */
+  .roadmap-phase {
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 16px 0;
+  }
+  .roadmap-header {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 16px;
+    background: var(--bg-alt);
+    cursor: pointer;
+  }
+  .phase-num {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ink-dim);
+  }
+  .phase-title { font-weight: 700; font-size: 0.95rem; }
+  .phase-tag {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 2px 9px;
+    border-radius: 999px;
+  }
+  .phase-tag.now   { background: oklch(91% 0.1 150); color: oklch(30% 0.15 150); }
+  .phase-tag.soon  { background: oklch(91% 0.08 45);  color: oklch(30% 0.12 45); }
+  .phase-tag.later { background: var(--bg-alt); border: 1px solid var(--rule); color: var(--ink-dim); }
+  .roadmap-body { padding: 16px; border-top: 1px solid var(--rule); }
+  .roadmap-body ul { margin-bottom: 0; }
+
+  /* ── Verdict table ── */
+  .verdict-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+    margin: 20px 0;
+  }
+  .verdict-table th {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    text-align: left;
+    padding: 8px 12px;
+    background: var(--bg-alt);
+    border-bottom: 2px solid var(--rule);
+  }
+  .verdict-table td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+    color: var(--ink-mid);
+  }
+  .verdict-table td:first-child { font-weight: 600; font-family: var(--mono); font-size: 0.82rem; color: var(--ink); }
+  .verdict-table tr:last-child td { border-bottom: 0; }
+
+  /* ── Mermaid ── */
+  .mermaid-wrap {
+    background: white;
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 24px;
+    overflow-x: auto;
+    margin: 24px 0;
+  }
+
+  /* ── Print / media ── */
+  @media print {
+    nav { display: none; }
+    .page-wrap { grid-template-columns: 1fr; }
+    main { padding: 20px; }
+  }
+
+  @media (max-width: 900px) {
+    .page-wrap { grid-template-columns: 1fr; }
+    nav { display: none; }
+    main { padding: 32px 24px 80px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page-wrap">
+
+<!-- ─── Sidebar nav ─── -->
+<nav>
+  <div class="nav-logo">
+    <div class="nav-logo-label">Systemanalyse</div>
+    <div class="nav-logo-title">Zettelkasten-Ingestor</div>
+  </div>
+
+  <div class="nav-section-label">Diagnose</div>
+  <a href="#diag">A · Kurzdiagnose</a>
+  <a href="#product">B · Produktdefinition</a>
+
+  <div class="nav-section-label">Zielarchitektur</div>
+  <a href="#workflow">C · Ziel-Workflow</a>
+  <a href="#datamodel">D · Datenmodell</a>
+  <a href="#ui">E · UI & IA</a>
+
+  <div class="nav-section-label">Prompts & KI</div>
+  <a href="#prompts">F · Prompt-Architektur</a>
+  <a href="#returnformat">G · Rückgabeformat</a>
+
+  <div class="nav-section-label">Umsetzung</div>
+  <a href="#roadmap">H · Roadmap</a>
+  <a href="#singlefile">I · Single-File</a>
+  <a href="#diagram">→ Mermaid</a>
+</nav>
+
+<!-- ─── Main content ─── -->
+<main>
+
+  <h1>Zettelkasten-Ingestor<br>Systemanalyse & Zielarchitektur</h1>
+  <div class="doc-meta">
+    <span>📅 April 2026</span>
+    <span>📄 Single-File-HTML · Vanilla JS</span>
+    <span>🎯 Obsidian · Structured Tree · MOC</span>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       A. KURZDIAGNOSE
+  ══════════════════════════════════════════════ -->
+  <h2 id="diag"><span class="section-id">A</span> Kurzdiagnose des aktuellen App-Zustands</h2>
+
+  <h3>Was am aktuellen Stand schon gut ist</h3>
+
+  <p>Der Code ist solide. Die Persistenz via <code>localStorage</code> mit strukturierten Defaults, die Normalisierungs-Funktionen für Notizobjekte und MOC-Einträge, das Debouncing, der Log-Stream, das Workspace-Import/Export — das sind alles Bausteine, die man in Phase 1 der Überarbeitung direkt weiterverwenden kann. Auch das Dateimodell für <code>structuredNote</code> (id, title, summary, basePath, slug, tags, type, flashcards) ist konzeptuell schon nah am Ziel.</p>
+
+  <div class="callout good">
+    <div class="callout-label">Wiederverwenden</div>
+    <p>localStorage-Persistenz, Normalisierungs-Funktionen, File-Drop-Zone, Activity-Log, Workspace-Backup, die <code>structuredNote</code>-Objektstruktur, ZIP-Export via JSZip.</p>
+  </div>
+
+  <h3>Wo die App vom Ziel abgedriftet ist</h3>
+
+  <p>Das zentrale Problem: <strong>Die App ist auf eine einzelne große SOP ausgerichtet, aber das Ziel ist atomare Zerlegung in viele kleine Notizen.</strong> Alles andere folgt aus diesem Grundmissverhältnis.</p>
+
+  <ol>
+    <li><strong>SOP als Endformat.</strong> Die gesamte Kette läuft auf <em>eine</em> Markdown-Datei zu. Der Denoise-Prompt ist auf eine SOP-Struktur (<code>## Trigger / ## Root Cause / ## Flashcards</code>) getrimmt. Das ist für Chat-Exporte aus Debugging-Sessions richtig — für Unterrichtsmaterial falsch. Die SOP ist ein Nebenprodukt, nicht das Hauptprodukt.</li>
+    <li><strong>Das Rohtext-Textarea als Hauptarbeitsfeld.</strong> Für kleine Snippets okay. Für Chat-Exporte mit 10.000+ Zeichen falsch — das passt nicht in einen Prompt, und der User weiß das. Datei-Attach + Standard-Prompt ist der reale Workflow.</li>
+    <li><strong>Denoising als fest verdrahtete erste Stufe.</strong> Denoising macht Sinn für verrauschte Chat-Logs. Für strukturiertes Unterrichtsmaterial ist es oft unnötig oder kontraproduktiv. Es sollte optional sein, nicht obligatorisch.</li>
+    <li><strong>JSON-Import als sichtbarer Nutzer-Workflow.</strong> Der Button "📥 JSON importieren" suggeriert, dass JSON ein Endnutzer-Format ist. Ist es nicht. JSON ist das interne Rückgabeformat der KI.</li>
+    <li><strong>Konfiguration zu prominent.</strong> API-Keys, Modell-Wahl, Temperatur, Obsidian-URL — diese Dinge braucht man einmal. Die ganze rechte Sidebar für Config zu reservieren verdrängt das Wesentliche.</li>
+    <li><strong>MOC-Bezug zu spät und zu versteckt.</strong> Die MOC taucht erst in Schritt 4 ("Generated Notes") auf, nach Denoising und SOP-Erstellung. Das ist konzeptuell falsch: die MOC muss <em>vor</em> der Analyse-Prompt-Generierung geladen sein, weil sie Kontext für den Prompt ist.</li>
+    <li><strong>Keine sichtbare Pfad/Zweig-Bearbeitung.</strong> Das Kernfeature — Zweige prüfen, umbenennen, verschieben — gibt es in der UI nicht. Die <code>structuredNotes</code>-Felder (<code>basePath</code>, <code>slug</code>) sind im Datenmodell vorhanden, aber in der UI nicht wirklich editierbar.</li>
+    <li><strong>Flashcard-Felder als Textareas.</strong> Zwei Textareas (<code>flashFront</code> / <code>flashBack</code>) sind ein Einzel-Karten-Interface. Das Anki-Zielformat (3 CSVs: MC, Tapping, Cloze) und das bereits gut definierte Template werden vom UI-Konzept nicht abgebildet.</li>
+  </ol>
+
+  <div class="callout bad">
+    <div class="callout-label">Ballast / falsch priorisiert</div>
+    <p>SOP-Prompt als Hauptpfad · Rohtext-Textarea als Primäreingabe · JSON-Import-Button als Nutzer-Workflow · große Config-Sidebar · API-Modus vs. Manuell-Toggle als primäre UX-Entscheidung · einzelne Flashcard-Front/Back-Felder.</p>
+  </div>
+
+  <hr>
+
+  <!-- ══════════════════════════════════════════════
+       B. PRODUKTDEFINITION
+  ══════════════════════════════════════════════ -->
+  <h2 id="product"><span class="section-id">B</span> Klare Produktdefinition</h2>
+
+  <h3>Was diese App ist</h3>
+
+  <div class="callout note">
+    <p><strong>KI-gestützter Zettelkasten-Ingestor für Unterrichtsnotizen, Chat-Exporte und Lernmaterial.</strong></p>
+    <p>Die App nimmt rohes Lernmaterial, erzeugt daraus strukturierte Analyse-Prompts, interpretiert die strukturierten KI-Antworten und exportiert atomare Markdown-Notizen in einer baumförmigen Struktur — kompatibel mit Obsidian Structured Tree und MOC-basiertem Zettelkasten.</p>
+  </div>
+
+  <p>Sie ist ein <strong>Prompt-Generator + Struktur-Editor + Export-Engine</strong>. Die KI sitzt außerhalb der App (Claude / ChatGPT). Die App ist die Klammer darum.</p>
+
+  <h3>Was diese App nicht ist</h3>
+  <ul>
+    <li>Kein SOP-Builder (SOPs können Nebenprodukt sein, sind aber nicht Hauptzweck)</li>
+    <li>Kein generisches ETL-Tool</li>
+    <li>Kein Blackbox-KI-Wrapper (keine direkte API-Integration als Hauptpfad)</li>
+    <li>Kein Anki-Generator (Anki-CSV ist ein optionaler Nebenoutput)</li>
+    <li>Kein Multi-File-Projekt und kein Build-Step-Tool</li>
+  </ul>
+
+  <hr>
+
+  <!-- ══════════════════════════════════════════════
+       C. ZIEL-WORKFLOW
+  ══════════════════════════════════════════════ -->
+  <h2 id="workflow"><span class="section-id">C</span> Ziel-Workflow</h2>
+
+  <div class="flow">
+
+    <div class="flow-step">
+      <div class="flow-step-left">
+        <div class="flow-num user">1</div>
+        <div class="flow-line"></div>
+      </div>
+      <div class="flow-body">
+        <div class="flow-actor user">Nutzer</div>
+        <div class="flow-title">Material auswählen</div>
+        <div class="flow-desc">Dateien droppen (MD, TXT, JSON-Export, HTML) oder Text einfügen. App liest Dateien ein und zeigt Zusammenfassung (Dateiname, Zeichenzahl, erkannter Typ).</div>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="flow-step-left">
+        <div class="flow-num user">2</div>
+        <div class="flow-line"></div>
+      </div>
+      <div class="flow-body">
+        <div class="flow-actor user">Nutzer</div>
+        <div class="flow-title">Bestehende MOC laden (optional)</div>
+        <div class="flow-desc">MOC-Markdown-Datei einlesen. App parsed Wikilinks + Einzeiler-Summaries und baut intern <code>MocIndex[]</code> auf. Anzeige: wieviele MOC-Einträge geladen, welche Tiefe, welche Top-Zweige. Wenn keine MOC: Bootstrap-Modus aktivieren.</div>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="flow-step-left">
+        <div class="flow-num app">3</div>
+        <div class="flow-line"></div>
+      </div>
+      <div class="flow-body">
+        <div class="flow-actor app">App · intern</div>
+        <div class="flow-title">Analyse-Prompt erzeugen</div>
+        <div class="flow-desc">App assembliert Prompt aus: Systeminstruktion + MOC-Kontext (wenn vorhanden) + Rückgabeformat-Spezifikation. Der Prompt erklärt der KI, dass sie das Material in atomare Notizen zerlegen und als strukturiertes JSON zurückgeben soll.</div>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="flow-step-left">
+        <div class="flow-num user">4</div>
+        <div class="flow-line"></div>
+      </div>
+      <div class="flow-body">
+        <div class="flow-actor user">Nutzer</div>
+        <div class="flow-title">Prompt kopieren + extern an KI senden</div>
+        <div class="flow-desc">Prompt in Zwischenablage. Nutzer öffnet Claude / ChatGPT, fügt Prompt ein, hängt Dateien an (weil Dateien zu groß für Prompt-Embedding sind). KI antwortet mit strukturiertem JSON.</div>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="flow-step-left">
+        <div class="flow-num user">5</div>
+        <div class="flow-line"></div>
+      </div>
+      <div class="flow-body">
+        <div class="flow-actor user">Nutzer</div>
+        <div class="flow-title">KI-Ergebnis einfügen</div>
+        <div class="flow-desc">JSON-Antwort der KI in die App einfügen. App validiert Struktur und zeigt Fehlermeldung wenn ungültig.</div>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="flow-step-left">
+        <div class="flow-num app">6</div>
+        <div class="flow-line"></div>
+      </div>
+      <div class="flow-body">
+        <div class="flow-actor app">App · intern</div>
+        <div class="flow-title">Notizen parsen + gegen MOC einordnen</div>
+        <div class="flow-desc">App liest <code>notes[]</code> aus dem JSON. Wenn MOC vorhanden: Pfad-Vorschläge aus KI mit MOC-Einträgen abgleichen, Konflikte markieren. Wenn Bootstrap: vorgeschlagene Struktur direkt übernehmen.</div>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="flow-step-left">
+        <div class="flow-num user">7</div>
+        <div class="flow-line"></div>
+      </div>
+      <div class="flow-body">
+        <div class="flow-actor user">Nutzer</div>
+        <div class="flow-title">Pfade / Zweige prüfen und modifizieren</div>
+        <div class="flow-desc">Jede atomare Notiz ist editierbar: Pfad (Struktur-ID), title, desc, tags, type. Zweige lassen sich umbenennen (wirkt auf alle Notizen im Zweig). Reihenfolge sortierbar. Neue Notizen manuell ergänzen.</div>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="flow-step-left">
+        <div class="flow-num user">8</div>
+        <div class="flow-line"></div>
+      </div>
+      <div class="flow-body">
+        <div class="flow-actor user">Nutzer</div>
+        <div class="flow-title">Export auslösen</div>
+        <div class="flow-desc">Markdown-Dateien (eine pro Notiz, Dateiname = Struktur-ID), MOC.md, optional Anki-CSVs (MC, Tapping, Cloze), optional ZIP-Bundle.</div>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="flow-step-left">
+        <div class="flow-num ai">+</div>
+      </div>
+      <div class="flow-body">
+        <div class="flow-actor ai">Später · Refactor-Ebene</div>
+        <div class="flow-title">Struktur-Review-Prompt erzeugen</div>
+        <div class="flow-desc">App serialisiert bestehende MOC + Notizstruktur, erzeugt einen Refactor-Analyse-Prompt. KI gibt Umstrukturierungsvorschläge zurück. App stellt diese als einzeln bestätigbare Änderungen dar.</div>
+      </div>
+    </div>
+
+  </div>
+
+  <hr>
+
+  <!-- ══════════════════════════════════════════════
+       D. DATENMODELL
+  ══════════════════════════════════════════════ -->
+  <h2 id="datamodel"><span class="section-id">D</span> Ziel-Datenmodell</h2>
+
+  <p>Das interne State-Objekt der App sollte folgende Kernstrukturen haben:</p>
+
+  <!-- AtomicNote -->
+  <div class="schema-card">
+    <div class="schema-header">
+      AtomicNote
+      <span class="type-badge">Kern-Objekt</span>
+    </div>
+    <div class="schema-body">
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">id</div>
+          <div class="schema-field-type">string (uid)</div>
+        </div>
+        <div class="schema-field-desc">Interner Bezeichner, niemals Dateiname</div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">path</div>
+          <div class="schema-field-type">string (dot-notation)</div>
+        </div>
+        <div class="schema-field-desc">Struktur-ID = Dateiname ohne .md, z.B. <code>sql.join.inner</code> — primärer editierbarer Wert</div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">title</div>
+          <div class="schema-field-type">string</div>
+        </div>
+        <div class="schema-field-desc">Lesbarer Anzeigename → geht in Frontmatter <code>title:</code></div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">desc</div>
+          <div class="schema-field-type">string</div>
+        </div>
+        <div class="schema-field-desc">Ein-Satz-Summary → Frontmatter <code>desc:</code> + MOC-Eintrag</div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">tags</div>
+          <div class="schema-field-type">string[]</div>
+        </div>
+        <div class="schema-field-desc">Themen-Tags → Frontmatter <code>tags:</code></div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">type</div>
+          <div class="schema-field-type">"concept"|"process"|"reference"|"example"</div>
+        </div>
+        <div class="schema-field-desc">Notiztyp → Frontmatter <code>type:</code>, beeinflusst Anki-Kartentyp</div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">body</div>
+          <div class="schema-field-type">string (Markdown)</div>
+        </div>
+        <div class="schema-field-desc">Vollständiger Notizinhalt als Markdown</div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">mocRef</div>
+          <div class="schema-field-type">string | null</div>
+        </div>
+        <div class="schema-field-desc">Pfad des gematchten MOC-Eintrags (wenn Abgleich erfolgreich)</div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">mocConflict</div>
+          <div class="schema-field-type">boolean</div>
+        </div>
+        <div class="schema-field-desc">True wenn KI-Pfad und MOC-Eintrag nicht eindeutig übereinstimmen</div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">flashcards</div>
+          <div class="schema-field-type">Flashcard[]</div>
+        </div>
+        <div class="schema-field-desc">Kartenvorschläge für diese Notiz (optional, aus KI-Output)</div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">createdAt / updatedAt</div>
+          <div class="schema-field-type">ISO string</div>
+        </div>
+        <div class="schema-field-desc">Zeitstempel</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Flashcard -->
+  <div class="schema-card">
+    <div class="schema-header">
+      Flashcard
+      <span class="type-badge">Eingebettet in AtomicNote</span>
+    </div>
+    <div class="schema-body">
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">cardType</div>
+          <div class="schema-field-type">"mc"|"tapping"|"cloze"</div>
+        </div>
+        <div class="schema-field-desc">Bestimmt CSV-Datei + Note-Type beim Anki-Export</div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">learnable</div>
+          <div class="schema-field-type">string</div>
+        </div>
+        <div class="schema-field-desc">Vorderseite / Frage / Satz für Tapping</div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">definition</div>
+          <div class="schema-field-type">string</div>
+        </div>
+        <div class="schema-field-desc">Rückseite / Antwort</div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">choices</div>
+          <div class="schema-field-type">string[] (4)</div>
+        </div>
+        <div class="schema-field-desc">MC/Cloze: genau 4 Optionen</div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">extra</div>
+          <div class="schema-field-type">string</div>
+        </div>
+        <div class="schema-field-desc">Merker, Abgrenzung, Beispielcode — nie leer</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MocEntry -->
+  <div class="schema-card">
+    <div class="schema-header">
+      MocEntry
+      <span class="type-badge">Aus geladener MOC.md geparst</span>
+    </div>
+    <div class="schema-body">
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">path</div>
+          <div class="schema-field-type">string (dot-notation)</div>
+        </div>
+        <div class="schema-field-desc">Aus Wikilink extrahiert: <code>[[sql.join.inner]]</code> → <code>sql.join.inner</code></div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">summary</div>
+          <div class="schema-field-type">string</div>
+        </div>
+        <div class="schema-field-desc">Einzeiler-Beschreibung aus der MOC-Zeile</div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">depth / segments</div>
+          <div class="schema-field-type">number / string[]</div>
+        </div>
+        <div class="schema-field-desc">Abgeleitet aus path.split('.')</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Session/Workspace -->
+  <div class="schema-card">
+    <div class="schema-header">
+      Session (AppState)
+      <span class="type-badge">localStorage-Root</span>
+    </div>
+    <div class="schema-body">
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">sourceFiles</div>
+          <div class="schema-field-type">SourceFile[]</div>
+        </div>
+        <div class="schema-field-desc">Metadaten geladener Dateien (Name, Typ, Zeichenzahl, kein Blob)</div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">mocIndex</div>
+          <div class="schema-field-type">MocEntry[]</div>
+        </div>
+        <div class="schema-field-desc">Geparsete MOC-Einträge</div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">notes</div>
+          <div class="schema-field-type">AtomicNote[]</div>
+        </div>
+        <div class="schema-field-desc">Alle atomaren Notizen des aktuellen Workspace</div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">analysisPrompt</div>
+          <div class="schema-field-type">string</div>
+        </div>
+        <div class="schema-field-desc">Zuletzt generierter Analyse-Prompt</div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">rawKiResponse</div>
+          <div class="schema-field-type">string</div>
+        </div>
+        <div class="schema-field-desc">Letzter JSON-Rohtext der KI (für Re-Import und Debugging)</div>
+      </div>
+      <div class="schema-field">
+        <div>
+          <div class="schema-field-name">config</div>
+          <div class="schema-field-type">Config</div>
+        </div>
+        <div class="schema-field-desc">Einstellungen (Präfixe, Obsidian-URL, Anki-Deck, etc.)</div>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ══════════════════════════════════════════════
+       E. UI / IA
+  ══════════════════════════════════════════════ -->
+  <h2 id="ui"><span class="section-id">E</span> Ziel-UI / Ziel-Informationsarchitektur</h2>
+
+  <p>Die App sollte <strong>5 klar getrennte, linear aufeinander aufbauende Hauptbereiche</strong> haben. Kein komplexes Sidebar-Layout. Ein Hauptpfad mit deutlichem Fortschritt.</p>
+
+  <h3>Hauptbereiche (Ziel)</h3>
+
+  <ol>
+    <li>
+      <strong>Material</strong> — Datei-Drop, Datei-Liste, ggf. Zwischenablage-Paste. Kein großes Rohtext-Textarea mehr als Primärelement. <em>KPI: Dateien, erkannter Typ, Zeichenzahl gesamt.</em>
+    </li>
+    <li>
+      <strong>Kontext (MOC)</strong> — MOC-Datei laden. Wenn geladen: Top-Zweige anzeigen, Anzahl Einträge, Tiefe. Wenn nicht geladen: deutlicher Hinweis "Bootstrap-Modus — KI schlägt erste Struktur vor". <em>Wichtig: MOC-Kontext ist Input für den Prompt, deshalb vor der Prompt-Generierung.</em>
+    </li>
+    <li>
+      <strong>Analyse-Prompt</strong> — Erzeugter Prompt anzeigen. Copy-Button groß. Rückgabefeld für KI-JSON. Validierungsstatus. Kein Toggle "API vs. Manuell" als Hauptentscheidung — manuell ist der Default.
+    </li>
+    <li>
+      <strong>Notizen-Editor</strong> — Die generierten atomaren Notizen als editierbare Karten. Jede Karte zeigt: path (editierbar), title (editierbar), desc (editierbar), type, tags, body (expandierbar). Zweig-Umbenennung: ein Edit-Feld für den Präfix wirkt auf alle Karten im Zweig. Konflikt-Warnung wenn MOC-Abgleich nicht eindeutig.
+    </li>
+    <li>
+      <strong>Export</strong> — Markdown-Dateien (ZIP), MOC.md, optional Anki-CSVs (3 Dateien). Klare Checkliste was exportiert wird.
+    </li>
+  </ol>
+
+  <h3>Sidebar (Ziel)</h3>
+  <p>Schlanke Config-Sidebar mit <strong>Collapse-Funktion</strong>: Obsidian-URL, Pfad-Präfix, Anki-Deck. API-Keys nur wenn API-Modus gewünscht. Nicht mehr der dominante rechte Block.</p>
+
+  <h3>Was aus der aktuellen UI entfernt oder zurückgebaut werden sollte</h3>
+
+  <table class="verdict-table">
+    <thead>
+      <tr><th>Element</th><th>Aktuell</th><th>Empfehlung</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>sourceText Textarea</td>
+        <td>Primäre Eingabe, riesig</td>
+        <td>Nur noch als "Rohtext einfügen"-Fallback, kollapsiert</td>
+      </tr>
+      <tr>
+        <td>denoisePrompt / denoisedText</td>
+        <td>Eigener Bereich mit zwei Textareas</td>
+        <td>Optional, in Prompt-Bereich integriert wenn aktiviert</td>
+      </tr>
+      <tr>
+        <td>sopText / sopPrompt</td>
+        <td>Hauptoutput</td>
+        <td>Entfernen als Hauptpfad; SOP als optionaler Export-Typ</td>
+      </tr>
+      <tr>
+        <td>JSON importieren Button</td>
+        <td>Sichtbarer Hauptbutton</td>
+        <td>Internes Paste-Feld im Analyse-Schritt, kein eigener Button</td>
+      </tr>
+      <tr>
+        <td>flashFront / flashBack Textareas</td>
+        <td>Einzelkarte manuell</td>
+        <td>Entfernen; Karten entstehen aus AtomicNote.flashcards[]</td>
+      </tr>
+      <tr>
+        <td>API-Modus Toggle (API / Manuell)</td>
+        <td>Prominenter Select</td>
+        <td>Manuell ist Default; API optional in Config</td>
+      </tr>
+      <tr>
+        <td>Config-Sidebar</td>
+        <td>Halbe Breite, immer sichtbar</td>
+        <td>Kollapsiert; nur bei Bedarf öffnen</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <hr>
+
+  <!-- ══════════════════════════════════════════════
+       F. PROMPT-ARCHITEKTUR
+  ══════════════════════════════════════════════ -->
+  <h2 id="prompts"><span class="section-id">F</span> Prompt-Weitergabe-Architektur</h2>
+
+  <p>Die App ist ein <strong>Prompt-Generator</strong>, keine KI-Blackbox. Es gibt genau drei Prompt-Typen:</p>
+
+  <h3>Prompt 1 · Analyse & Zerlegung (Haupt-Prompt)</h3>
+  <p>Erzeugt aus: Systeminstruktion + MOC-Kontext + Rückgabeformat-Spezifikation. <strong>Das Material wird nicht in den Prompt eingebettet</strong> — es wird als Datei-Anhang an die KI geschickt.</p>
+  <ul>
+    <li>Instruiert die KI, das Material in atomare Notizen zu zerlegen</li>
+    <li>Enthält die MOC als Kontext (wenn vorhanden) — als komprimierte Baumdarstellung</li>
+    <li>Gibt das JSON-Rückgabeformat vor (Struktur, Pflichtfelder, Beispiel)</li>
+    <li>Im Bootstrap-Modus: KI soll selbst eine erste Baumstruktur vorschlagen</li>
+  </ul>
+
+  <h3>Prompt 2 · Anki-Karten (Nebenoutput)</h3>
+  <p>Erzeugt aus: exportierten atomaren Notizen + Anki-Template-Spezifikation. Nutzt das bereits gut definierte <code>anki_csv_prompt.md</code> als Basis.</p>
+  <ul>
+    <li>Pro Fach / pro Notiz-Cluster einmal ausführen</li>
+    <li>Gibt 3 CSVs vor (MC, Tapping, Cloze)</li>
+    <li>Material: bereits bereinigte atomare Notizen, nicht das Rohmaterial</li>
+  </ul>
+
+  <h3>Prompt 3 · Refactor-Analyse (Später)</h3>
+  <p>Erzeugt aus: aktuelle MOC-Serialisierung + Notizstruktur. KI gibt strukturierte Umstrukturierungsvorschläge zurück (JSON: Typ der Änderung, betroffene Pfade, Begründung).</p>
+
+  <h3>Rolle von Denoising</h3>
+  <div class="callout info">
+    <p><strong>Denoising ist optional und kontextabhängig.</strong> Für verrauschte Debug-Chats: sinnvoll. Für strukturiertes Unterrichtsmaterial: oft überflüssig. Es sollte als optionaler Pre-Processing-Schritt existieren, den der Nutzer bewusst aktiviert — nicht als feste erste Stufe der Kette.</p>
+    <p>Wenn aktiviert: eigener Prompt, eigene Copy-Paste-Runde, dann Ergebnis als Input für Prompt 1.</p>
+  </div>
+
+  <h3>Strukturierte Rückgabeformate</h3>
+  <p>Nur an zwei Stellen sinnvoll: nach Prompt 1 (→ Notizen-JSON) und nach Prompt 3 (→ Refactor-Vorschläge-JSON). Anki-CSVs sind kein JSON sondern direkt nutzbare CSV-Dateien.</p>
+
+  <hr>
+
+  <!-- ══════════════════════════════════════════════
+       G. RÜCKGABEFORMAT
+  ══════════════════════════════════════════════ -->
+  <h2 id="returnformat"><span class="section-id">G</span> Vorschlag für das KI-Rückgabeformat</h2>
+
+  <p>Das Format muss einfach genug sein, dass Claude / ChatGPT es zuverlässig produzieren, und reich genug, dass die App daraus alle Exports ableiten kann.</p>
+
+<pre><code>{
+  <span class="key">"schema"</span>: <span class="str">"zettelkasten-ingestor-v1"</span>,
+  <span class="key">"sourceHint"</span>: <span class="str">"SQL-Unterricht 2026-04-20"</span>,
+  <span class="key">"notes"</span>: [
+    {
+      <span class="key">"path"</span>: <span class="str">"sql.join.inner"</span>,        <span class="comment">// Dateiname = Struktur-ID</span>
+      <span class="key">"title"</span>: <span class="str">"INNER JOIN"</span>,            <span class="comment">// → Frontmatter title:</span>
+      <span class="key">"desc"</span>: <span class="str">"Gibt nur Datensätze zurück, die in BEIDEN Tabellen eine Übereinstimmung haben."</span>,
+      <span class="key">"type"</span>: <span class="str">"concept"</span>,               <span class="comment">// concept|process|reference|example</span>
+      <span class="key">"tags"</span>: [<span class="str">"sql"</span>, <span class="str">"joins"</span>, <span class="str">"datenbanken"</span>],
+      <span class="key">"body"</span>: <span class="str">"## INNER JOIN\n\nGibt nur Zeilen zurück..."</span>,
+      <span class="key">"mocRef"</span>: <span class="str">"sql.join"</span>,            <span class="comment">// nächster passender MOC-Eintrag</span>
+      <span class="key">"flashcards"</span>: [
+        {
+          <span class="key">"cardType"</span>: <span class="str">"mc"</span>,
+          <span class="key">"learnable"</span>: <span class="str">"INNER JOIN"</span>,
+          <span class="key">"definition"</span>: <span class="str">"Gibt nur Datensätze zurück, die in BEIDEN Tabellen eine Übereinstimmung haben"</span>,
+          <span class="key">"choices"</span>: [<span class="str">"INNER JOIN"</span>, <span class="str">"LEFT JOIN"</span>, <span class="str">"RIGHT JOIN"</span>, <span class="str">"FULL OUTER JOIN"</span>],
+          <span class="key">"extra"</span>: <span class="str">"Merker: INNER = nur Schnittmenge. Beispiel: SELECT * FROM A INNER JOIN B ON A.id = B.id"</span>
+        },
+        {
+          <span class="key">"cardType"</span>: <span class="str">"tapping"</span>,
+          <span class="key">"learnable"</span>: <span class="str">"INNER JOIN gibt nur übereinstimmende Datensätze aus beiden Tabellen zurück"</span>,
+          <span class="key">"definition"</span>: <span class="str">"Schnittmenge zweier Tabellen über JOIN-Bedingung"</span>,
+          <span class="key">"choices"</span>: [],
+          <span class="key">"extra"</span>: <span class="str">"Gegenbeispiel: LEFT JOIN würde auch Zeilen aus A ohne Match zurückgeben"</span>
+        }
+      ]
+    }
+  ],
+  <span class="key">"moc"</span>: [
+    <span class="comment">// Nur im Bootstrap-Modus: KI schlägt MOC-Einträge vor</span>
+    {
+      <span class="key">"path"</span>: <span class="str">"sql.join"</span>,
+      <span class="key">"summary"</span>: <span class="str">"Alle Arten von SQL-JOIN-Operationen"</span>
+    }
+  ]
+}</code></pre>
+
+  <div class="callout note">
+    <div class="callout-label">Warum kein Markdown als Rückgabeformat?</div>
+    <p>Weil die App aus <em>einem</em> KI-Output <em>mehrere</em> Notizen mit je eigenen Metadaten, Pfaden und Flashcards extrahieren muss. Das ist mit Markdown-Parsing fragil. JSON ist eindeutig parsebar, validierbar und direkt in Exports umwandelbar.</p>
+  </div>
+
+  <h3>Was die App daraus erzeugt</h3>
+  <ul>
+    <li><strong>Markdown-Datei pro Notiz:</strong> Dateiname = <code>path + ".md"</code>. Frontmatter aus title, desc, type, tags. Body aus <code>body</code>-Feld.</li>
+    <li><strong>MOC.md:</strong> Aus allen <code>desc</code>-Feldern + Wikilinks auf alle <code>path</code>s.</li>
+    <li><strong>Anki-CSVs (3 Stück):</strong> Aus allen <code>flashcards[]</code> nach <code>cardType</code> gruppiert.</li>
+  </ul>
+
+  <h3>Frontmatter-Ausgabeformat (pro .md-Datei)</h3>
+<pre><code><span class="comment">---</span>
+<span class="key">title</span>: <span class="val">INNER JOIN</span>
+<span class="key">desc</span>: <span class="val">Gibt nur Datensätze zurück, die in BEIDEN Tabellen eine Übereinstimmung haben.</span>
+<span class="key">type</span>: <span class="val">concept</span>
+<span class="key">tags</span>: <span class="val">[sql, joins, datenbanken]</span>
+<span class="key">created</span>: <span class="val">2026-04-23</span>
+<span class="comment">---</span>
+
+<span class="val">## INNER JOIN</span>
+
+<span class="val">Gibt nur Zeilen zurück...</span></code></pre>
+
+  <hr>
+
+  <!-- ══════════════════════════════════════════════
+       H. ROADMAP
+  ══════════════════════════════════════════════ -->
+  <h2 id="roadmap"><span class="section-id">H</span> Roadmap für die Grundüberarbeitung</h2>
+
+  <div class="roadmap-phase">
+    <div class="roadmap-header">
+      <span class="phase-num">01</span>
+      <span class="phase-title">Kern-Refactor: Datenmodell + HTML-Struktur neu schneiden</span>
+      <span class="phase-tag now">Zuerst</span>
+    </div>
+    <div class="roadmap-body">
+      <ul>
+        <li>AppState auf neues Modell umstellen: <code>notes[]</code> (AtomicNote), <code>mocIndex[]</code>, <code>analysisPrompt</code>, <code>rawKiResponse</code></li>
+        <li>HTML-Grundstruktur: 5 sequenzielle Bereiche statt 2-Spalten-Layout</li>
+        <li>Aus aktuellem Code weiterverwenden: localStorage-Persistenz, Normalisierungs-Logik, Activity-Log, Workspace-Backup, JSZip-Integration, MocIndex-Parser</li>
+        <li>Entfernen: SOP-Prompt, Denoise als Pflichtschritt, Flashcard-Front/Back-Textareas, API-Modus-Toggle</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="roadmap-phase">
+    <div class="roadmap-header">
+      <span class="phase-num">02</span>
+      <span class="phase-title">Analyse-Prompt-Generator + KI-JSON-Parser</span>
+      <span class="phase-tag now">Zuerst</span>
+    </div>
+    <div class="roadmap-body">
+      <ul>
+        <li>Prompt 1 assembler: Systeminstruktion + MOC-Kontext + Rückgabeformat-Spezifikation</li>
+        <li>JSON-Validator für KI-Rückgabe (Schema: <code>zettelkasten-ingestor-v1</code>)</li>
+        <li>MOC-Abgleich: <code>mocRef</code> aus KI-Output gegen geladene MocEntries matchen, Konflikte markieren</li>
+        <li>Bootstrap-Modus: Wenn keine MOC, <code>moc[]</code>-Array aus KI-Output als neuen MocIndex übernehmen</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="roadmap-phase">
+    <div class="roadmap-header">
+      <span class="phase-num">03</span>
+      <span class="phase-title">Notizen-Editor UI</span>
+      <span class="phase-tag soon">Danach</span>
+    </div>
+    <div class="roadmap-body">
+      <ul>
+        <li>Karten-Liste: je AtomicNote eine editierbare Karte</li>
+        <li>Inline-Edit: path, title, desc, type, tags</li>
+        <li>Zweig-Bulk-Edit: Präfix ändern wirkt auf alle Notizen im Zweig</li>
+        <li>Konflikt-Markierung wenn <code>mocConflict: true</code></li>
+        <li>Notiz expandieren für Body-Edit</li>
+        <li>Notiz manuell hinzufügen / löschen</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="roadmap-phase">
+    <div class="roadmap-header">
+      <span class="phase-num">04</span>
+      <span class="phase-title">Export-Engine</span>
+      <span class="phase-tag soon">Danach</span>
+    </div>
+    <div class="roadmap-body">
+      <ul>
+        <li>Markdown-Dateien: je Notiz eine .md-Datei mit korrektem Frontmatter</li>
+        <li>MOC.md: generiert aus title + desc + Wikilinks aller Notizen</li>
+        <li>Anki-CSVs: 3 Dateien (MC, Tapping, Cloze) aus <code>flashcards[]</code> nach cardType</li>
+        <li>ZIP-Bundle: alle Dateien in einem Download</li>
+        <li>Aus aktuellem Code weiterverwenden: JSZip-Export-Logik</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="roadmap-phase">
+    <div class="roadmap-header">
+      <span class="phase-num">05</span>
+      <span class="phase-title">Denoising als optionaler Vorschritt</span>
+      <span class="phase-tag soon">Danach</span>
+    </div>
+    <div class="roadmap-body">
+      <ul>
+        <li>Bewusst aktivierbarer Pre-Processing-Schritt für verrauschte Chat-Logs</li>
+        <li>Aus aktuellem Code weiterverwenden: Denoise-Prompt-Text, Copy-Paste-Mechanismus</li>
+        <li>Output des Denoise-Schritts wird Input für Analyse-Prompt-Generator</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="roadmap-phase">
+    <div class="roadmap-header">
+      <span class="phase-num">06</span>
+      <span class="phase-title">Refactor-Ebene (Struktur-Review)</span>
+      <span class="phase-tag later">Später</span>
+    </div>
+    <div class="roadmap-body">
+      <ul>
+        <li>Prompt 3 assembler: aktuelle Struktur serialisieren + Refactor-Analyse anfordern</li>
+        <li>Refactor-Vorschläge als bestätigbare Änderungen darstellen</li>
+        <li>Umbenennen von Zweigen mit Cascade-Auswirkung auf Pfade</li>
+      </ul>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ══════════════════════════════════════════════
+       I. SINGLE-FILE
+  ══════════════════════════════════════════════ -->
+  <h2 id="singlefile"><span class="section-id">I</span> Single-File-Realisierbarkeit</h2>
+
+  <p>Die Zielarchitektur ist als Single-File-HTML realistisch umsetzbar. Die Komplexität ist beherrschbar, weil:</p>
+
+  <ol>
+    <li><strong>Kein Reaktivitäts-Framework nötig.</strong> Die App hat einen linearen Workflow. Vanilla-JS mit klarer <code>render()</code>-Funktion pro Bereich reicht. Der aktuelle Code beweist das bereits für 3.000 Zeilen.</li>
+    <li><strong>Saubere Trennung von Logik und UI.</strong> Alles unter <code>// --- DATA ---</code> (Normalisierung, Parsing, Export) hat keine DOM-Abhängigkeiten. Das lässt sich gut in Funktionsblöcke im <code>&lt;script&gt;</code>-Tag organisieren.</li>
+    <li><strong>Externer KI-Aufruf nimmt Komplexität raus.</strong> Weil die KI extern läuft, gibt es keine Async-Chains, keine Retry-Logik, keine Streaming-Implementierung in der App. Das vereinfacht.</li>
+  </ol>
+
+  <h3>Wie man Komplexität begrenzt</h3>
+
+  <table class="verdict-table">
+    <thead>
+      <tr><th>Problem</th><th>Lösung</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Zu viele Features im Scope</td>
+        <td>Phasen 1–4 zuerst fertig machen, bevor Denoising oder Refactor-Ebene gebaut wird</td>
+      </tr>
+      <tr>
+        <td>Langer &lt;script&gt;-Block</td>
+        <td>Funktionale Blöcke mit Kommentar-Headern: DATA / PARSE / RENDER / EVENTS / EXPORT. Keine Klassen nötig.</td>
+      </tr>
+      <tr>
+        <td>UI-Komplexität im Editor</td>
+        <td>Karten per <code>innerHTML</code>-Template rendern. Kein Virtual DOM. Event-Delegation auf Container.</td>
+      </tr>
+      <tr>
+        <td>localStorage-Größe</td>
+        <td>Body-Felder kürzen wenn > 5kB pro Notiz. Blob-Inhalte nie speichern.</td>
+      </tr>
+      <tr>
+        <td>Sichtbare Komplexität</td>
+        <td>Config-Bereich kollapsiert. Denoising-Bereich kollapsiert wenn nicht aktiviert. Schritte 1–5 als sichtbare Progress-Indikatoren.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout note">
+    <div class="callout-label">Empfehlung</div>
+    <p>Neues Grundgerüst von Grund auf schreiben (Phase 1) statt den aktuellen Code zu patchen. Dann gezielt die wiederverwertbaren Funktionen aus dem alten Code hinüberkopieren. Der aktuelle Code ist nicht schlecht — aber die Grundstruktur hat sich zu weit vom Ziel-Workflow entfernt, um sie per Patch zu retten.</p>
+  </div>
+
+  <hr>
+
+  <!-- ══════════════════════════════════════════════
+       MERMAID
+  ══════════════════════════════════════════════ -->
+  <h2 id="diagram">Ziel-Workflow · Diagramm</h2>
+
+  <div class="mermaid-wrap">
+    <pre class="mermaid" style="background:white; color: #1c1a16;">
+flowchart TD
+    A([📂 Material auswählen\nDatei-Drop / Paste]) --> B
+
+    B{MOC\nvorhanden?}
+    B -- Ja --> C([🗂️ MOC laden\nWikilinks parsen])
+    B -- Nein --> D([⚡ Bootstrap-Modus\nKI schlägt Struktur vor])
+
+    C --> E
+    D --> E
+
+    E([🧠 Analyse-Prompt erzeugen\nSystem + MOC-Kontext + Rückgabeformat]) --> F
+
+    F([📋 Prompt kopieren\n+ Dateien extern an KI senden]) --> G
+
+    G([📥 KI-JSON einfügen\nValidierung]) --> H
+
+    H([🔍 Notizen parsen\nMOC-Abgleich, Konflikte markieren]) --> I
+
+    I([✏️ Notizen-Editor\nPfad · title · desc · type · tags · body\nZweige umbenennen]) --> J
+
+    J([📦 Export\nMarkdown-Dateien · MOC.md · Anki-CSVs · ZIP])
+
+    J -.->|Später| K([🔁 Refactor-Analyse\nStruktur-Review-Prompt\nUmstrukturierungsvorschläge])
+
+    style A fill:#fef3e2,stroke:#e8a020,color:#3a2a00
+    style B fill:#f0f0f0,stroke:#aaa,color:#333
+    style C fill:#e8f4f8,stroke:#2080a0,color:#004060
+    style D fill:#fff0e8,stroke:#c06000,color:#5a2a00
+    style E fill:#f0f0fa,stroke:#6060c0,color:#20206a
+    style F fill:#fef3e2,stroke:#e8a020,color:#3a2a00
+    style G fill:#fef3e2,stroke:#e8a020,color:#3a2a00
+    style H fill:#f0f0fa,stroke:#6060c0,color:#20206a
+    style I fill:#fef3e2,stroke:#e8a020,color:#3a2a00
+    style J fill:#e8f8ee,stroke:#20a060,color:#00402a
+    style K fill:#f8e8f0,stroke:#a02080,color:#400020
+    </pre>
+  </div>
+
+</main>
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+</script>
+
+<script>
+  // Sidebar active link on scroll
+  const sections = document.querySelectorAll('h2[id]');
+  const navLinks = document.querySelectorAll('nav a');
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        navLinks.forEach(a => a.classList.remove('active'));
+        const active = document.querySelector(`nav a[href="#${e.target.id}"]`);
+        if (active) active.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  sections.forEach(s => obs.observe(s));
+</script>
+
+</body>
+</html>
