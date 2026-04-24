@@ -639,6 +639,7 @@
         denoisedText: '',
         sopText: '',
         generatedNotes: [],
+        notes: [],
         structuredNotes: {
           importedAt: '',
           sourceName: '',
@@ -648,7 +649,18 @@
         mocIndex: {
           loadedAt: '',
           sourceName: '',
-          entries: []
+          entries: [],
+          bootstrapMode: false
+        },
+        config: {
+          prefix: '',
+          ankiDeck: 'Default',
+          obsidianUrl: ''
+        },
+        denoise: {
+          active: false,
+          prompt: '...',
+          result: ''
         },
         flashFront: '',
         flashBack: '',
@@ -698,6 +710,65 @@
       return new Date().toISOString();
     }
 
+    function makeFlashcard(data) {
+      var safe = data || {};
+      var legacyFront = String(safe.front || '').trim();
+      var legacyBack = String(safe.back || '').trim();
+      return {
+        id: String(safe.id || uid()),
+        cardType: String(safe.cardType || 'mc').trim() || 'mc',
+        learnable: String(safe.learnable || legacyFront).trim(),
+        definition: String(safe.definition || legacyBack).trim(),
+        choices: Array.isArray(safe.choices) ? safe.choices.map(function(choice) {
+          return String(choice || '').trim();
+        }).filter(Boolean) : [],
+        extra: String(safe.extra || '').trim()
+      };
+    }
+
+    function makeNote(data) {
+      var safe = data || {};
+      var legacyFilename = stripMdExtension(String(safe.filename || '').trim());
+      var legacyBasePath = normalizeDots(String(safe.basePath || '').trim());
+      var legacySlug = normalizeDots(String(safe.slug || '').replace(/-/g, '.').trim());
+      var legacyPath = normalizeDots([legacyBasePath, legacySlug].filter(Boolean).join('.'));
+      var flashcards = Array.isArray(safe.flashcards) ? safe.flashcards.map(function(card) {
+        return makeFlashcard(card);
+      }) : [];
+      return {
+        id: String(safe.id || uid()),
+        title: String(safe.title || 'Untitled Note').trim() || 'Untitled Note',
+        path: normalizeDots(String(safe.path || '').trim() || legacyFilename || legacyPath),
+        desc: String(safe.desc || safe.summary || '').trim(),
+        type: String(safe.type || '').trim(),
+        tags: Array.isArray(safe.tags) ? safe.tags.map(function(tag) {
+          return normalizeWhitespace(String(tag || ''));
+        }).filter(Boolean) : [],
+        body: String(safe.body != null ? safe.body : safe.markdown || ''),
+        mocRef: String(safe.mocRef || '').trim(),
+        mocConflict: !!safe.mocConflict,
+        flashcards: flashcards,
+        createdAt: safe.createdAt || nowIso(),
+        updatedAt: safe.updatedAt || nowIso()
+      };
+    }
+
+    function makeMocEntry(data) {
+      var safe = data || {};
+      var path = normalizeDots(stripMdExtension(String(safe.path || '').trim()).toLowerCase());
+      var summary = normalizeWhitespace(String(safe.summary || ''));
+      var segments = path ? path.split('.').filter(Boolean) : [];
+      var basename = getBasenameFromPath(path);
+      return {
+        path: path,
+        summary: summary,
+        segments: segments,
+        depth: segments.length,
+        basename: basename,
+        titleHint: String(safe.titleHint || basename || '').trim()
+      };
+    }
+
     function normalizeGeneratedNote(note) {
       var safe = note || {};
       return {
@@ -716,6 +787,17 @@
       if (!Array.isArray(notes)) return [];
       return notes.map(function(note) {
         return normalizeGeneratedNote(note);
+      });
+    }
+
+    function normalizeNote(note) {
+      return makeNote(note);
+    }
+
+    function normalizeNotes(notes) {
+      if (!Array.isArray(notes)) return [];
+      return notes.map(function(note) {
+        return normalizeNote(note);
       });
     }
 
@@ -770,19 +852,7 @@
     }
 
     function normalizeMocEntry(entry) {
-      var safe = entry || {};
-      var path = normalizeDots(stripMdExtension(String(safe.path || '').trim()).toLowerCase());
-      var summary = normalizeWhitespace(String(safe.summary || ''));
-      var segments = path ? path.split('.').filter(Boolean) : [];
-      var basename = getBasenameFromPath(path);
-      return {
-        path: path,
-        summary: summary,
-        segments: segments,
-        depth: segments.length,
-        basename: basename,
-        titleHint: String(safe.titleHint || basename || '').trim()
-      };
+      return makeMocEntry(entry);
     }
 
     function normalizeMocEntries(entries) {
@@ -799,7 +869,26 @@
       return {
         loadedAt: String(src.loadedAt || ''),
         sourceName: String(src.sourceName || ''),
-        entries: normalizeMocEntries(src.entries)
+        entries: normalizeMocEntries(src.entries),
+        bootstrapMode: !!src.bootstrapMode
+      };
+    }
+
+    function normalizeConfig(raw) {
+      var src = raw || {};
+      return {
+        prefix: String(src.prefix || '').trim(),
+        ankiDeck: String(src.ankiDeck || 'Default').trim() || 'Default',
+        obsidianUrl: String(src.obsidianUrl || '').trim()
+      };
+    }
+
+    function normalizeDenoise(raw) {
+      var src = raw || {};
+      return {
+        active: !!src.active,
+        prompt: String(src.prompt || '...'),
+        result: String(src.result || '')
       };
     }
 
@@ -879,8 +968,18 @@
           S = Object.assign(defaults(), parsed || {});
         }
         S.generatedNotes = normalizeGeneratedNotes(S.generatedNotes);
+        S.notes = normalizeNotes(S.notes);
         S.structuredNotes = normalizeStructuredNotesPayload(S.structuredNotes);
         S.mocIndex = normalizeMocIndex(S.mocIndex);
+        S.config = normalizeConfig(S.config);
+        S.denoise = normalizeDenoise(S.denoise);
+        if (!S.config.prefix && S.dendronPrefix) S.config.prefix = String(S.dendronPrefix || '').trim();
+        if ((!S.config.ankiDeck || S.config.ankiDeck === 'Default') && S.ankiDeck) {
+          S.config.ankiDeck = String(S.ankiDeck || '').trim() || 'Default';
+        }
+        if (!S.config.obsidianUrl && S.obsidianBaseUrl) S.config.obsidianUrl = String(S.obsidianBaseUrl || '').trim();
+        if (!S.denoise.result && S.denoisedText) S.denoise.result = String(S.denoisedText || '');
+        if (S.denoise.prompt === '...' && S.denoisePrompt) S.denoise.prompt = String(S.denoisePrompt || '');
       } catch (e) {
         console.error(e);
       }
