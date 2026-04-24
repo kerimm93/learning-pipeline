@@ -740,7 +740,7 @@
         title: String(safe.title || 'Untitled Note').trim() || 'Untitled Note',
         path: normalizeDots(String(safe.path || '').trim() || legacyFilename || legacyPath),
         desc: String(safe.desc || safe.summary || '').trim(),
-        type: String(safe.type || '').trim(),
+        type: String(safe.type || 'concept').trim() || 'concept',
         tags: Array.isArray(safe.tags) ? safe.tags.map(function(tag) {
           return normalizeWhitespace(String(tag || ''));
         }).filter(Boolean) : [],
@@ -1205,41 +1205,165 @@
     }
 
     function parseMocMarkdown(text) {
+      return parseMoc(text);
+    }
+
+    function parseMoc(text) {
       var lines = String(text || '').replace(/\r/g, '').split('\n');
       var entries = [];
-      for (var i = 0; i < lines.length; i++) {
-        var line = lines[i];
-        var link = line.match(/^\s*[-*]\s*\[\[([^\]]+)\]\]/);
-        if (!link) continue;
+      var seen = {};
 
-        var rawPath = normalizeDots(stripMdExtension(link[1] || '').trim().toLowerCase());
-        if (!rawPath) continue;
-
-        var summary = '';
-        var j = i + 1;
-        while (j < lines.length) {
-          var next = lines[j];
-          if (!next.trim()) {
-            j++;
-            continue;
-          }
-          var summaryMatch = next.match(/^\s{2,}[-*]\s+(.+)$/);
-          if (summaryMatch) {
-            summary = normalizeWhitespace(summaryMatch[1] || '');
-          }
-          break;
-        }
-
-        entries.push(normalizeMocEntry({ path: rawPath, summary: summary }));
+      function maybePushEntry(rawPath, summary) {
+        var entry = makeMocEntry({
+          path: rawPath,
+          summary: summary
+        });
+        if (!entry.path || seen[entry.path]) return;
+        seen[entry.path] = true;
+        entries.push(entry);
       }
 
-      var seen = {};
-      return entries.filter(function(entry) {
-        if (!entry.path) return false;
-        if (seen[entry.path]) return false;
-        seen[entry.path] = true;
-        return true;
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        var match;
+        var hasLink = false;
+        var linkRegex = /\[\[([^\]]+)\]\]/g;
+        while ((match = linkRegex.exec(line)) !== null) {
+          hasLink = true;
+          var rawTarget = String(match[1] || '').split('|')[0].split('#')[0].trim();
+          if (!rawTarget) continue;
+
+          var summary = '';
+          var lineRemainder = normalizeWhitespace(line.slice(match.index + match[0].length).replace(/^[-:–—\s]+/, ''));
+          if (lineRemainder) {
+            summary = lineRemainder;
+          } else {
+            var j = i + 1;
+            while (j < lines.length) {
+              var next = lines[j];
+              if (!next.trim()) {
+                j++;
+                continue;
+              }
+              if (/^\s{2,}/.test(next)) {
+                summary = normalizeWhitespace(next.replace(/^\s*[-*]\s+/, ''));
+              }
+              break;
+            }
+          }
+
+          maybePushEntry(rawTarget, summary);
+        }
+        if (!hasLink) continue;
+      }
+
+      return entries;
+    }
+
+    function buildMocTreeText(entries) {
+      var normalized = normalizeMocEntries(entries || []);
+      if (!normalized.length) return '(keine MOC-Einträge)';
+
+      var root = { children: {} };
+      normalized.slice().sort(function(a, b) {
+        return String(a.path || '').localeCompare(String(b.path || ''));
+      }).forEach(function(entry) {
+        var cursor = root;
+        (entry.segments || []).forEach(function(segment, idx, all) {
+          cursor.children[segment] = cursor.children[segment] || { children: {}, segment: segment };
+          cursor = cursor.children[segment];
+          if (idx === all.length - 1) {
+            cursor.entry = entry;
+          }
+        });
       });
+
+      var out = [];
+      function walk(node, prefix) {
+        var keys = Object.keys(node.children || {}).sort();
+        keys.forEach(function(key, idx) {
+          var child = node.children[key];
+          var isLast = idx === keys.length - 1;
+          var branch = isLast ? '└─ ' : '├─ ';
+          var nextPrefix = prefix + (isLast ? '   ' : '│  ');
+          var label = key;
+          if (child.entry && child.entry.summary) label += ' — ' + child.entry.summary;
+          out.push(prefix + branch + label);
+          walk(child, nextPrefix);
+        });
+      }
+      walk(root, '');
+      return out.join('\n');
+    }
+
+    function buildAnalysisPrompt() {
+      syncStateFromUI(false);
+      var sourceFiles = (S.sourceFiles || []).map(function(file) {
+        var safe = file || {};
+        return {
+          name: String(safe.name || '').trim(),
+          kind: String(safe.kind || '').trim(),
+          chars: Number(safe.chars || 0) || 0
+        };
+      }).filter(function(file) {
+        return !!file.name;
+      });
+
+      var moc = normalizeMocIndex(S.mocIndex);
+      var mocContext = moc.entries.map(function(entry) {
+        return {
+          path: entry.path,
+          summary: entry.summary || ''
+        };
+      });
+
+      return [
+        '# Zettelkasten Analyse-Prompt',
+        '',
+        'Du analysierst technische Eingaben für einen Zettelkasten-Ingestor.',
+        'Nutze ausschließlich Dateinamen und Metadaten als Dateikontext (kein Volltext der Quelldateien).',
+        '',
+        '## Konfiguration',
+        '- Schema: zettelkasten-ingestor-v1',
+        '- bootstrapMode: ' + (moc.bootstrapMode ? 'true' : 'false'),
+        '',
+        '## Source-Dateien (Metadaten)',
+        '```json',
+        JSON.stringify(sourceFiles, null, 2),
+        '```',
+        '',
+        '## MOC-Kontext',
+        mocContext.length ? '```json\n' + JSON.stringify(mocContext, null, 2) + '\n```' : '(kein MOC-Kontext vorhanden)',
+        '',
+        '## Aufgabe',
+        '- Erzeuge atomare, wiederverwendbare Wissensnotizen.',
+        '- Wenn bootstrapMode=true und kein passender MOC-Pfad existiert, darf ein neuer plausibler mocRef vorgeschlagen werden.',
+        '- Wenn MOC-Einträge vorhanden sind, nutze bevorzugt vorhandene Pfade als mocRef.',
+        '',
+        '## Ausgabeformat',
+        'Gib ausschließlich valides JSON im folgenden Format zurück:',
+        '```json',
+        JSON.stringify({
+          schema: 'zettelkasten-ingestor-v1',
+          notes: [{
+            path: 'string',
+            title: 'string',
+            desc: 'string',
+            type: 'concept',
+            tags: ['string'],
+            body: 'string',
+            mocRef: 'string',
+            flashcards: [{
+              cardType: 'mc',
+              learnable: 'string',
+              definition: 'string',
+              choices: ['string'],
+              extra: 'string'
+            }]
+          }]
+        }, null, 2),
+        '```'
+      ].join('\n');
     }
 
     function scoreMocEntryMatch(note, entry) {
