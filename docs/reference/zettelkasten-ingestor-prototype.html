@@ -1,0 +1,1849 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Zettelkasten-Ingestor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root {
+  --bg:        #111420;
+  --bg-mid:    #181c2e;
+  --surface:   #1e2438;
+  --surface-2: #252b42;
+  --border:    #2d3655;
+  --border-lt: #3d4e78;
+  --ink:       #e6e8f0;
+  --ink-mid:   #9aa0be;
+  --ink-dim:   #5a6080;
+  --gold:      #f0b640;
+  --gold-dk:   #c88c10;
+  --teal:      #38bfa0;
+  --teal-dk:   #229980;
+  --blue:      #5090e0;
+  --red:       #e05560;
+  --purple:    #8870d8;
+  --r:         10px;
+  --sidebar:   224px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ── Layout ── */
+.layout { display: flex; min-height: 100vh; }
+
+/* ── Sidebar ── */
+.sidebar {
+  width: var(--sidebar);
+  flex-shrink: 0;
+  background: var(--bg-mid);
+  border-right: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.sidebar-logo {
+  padding: 18px 16px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-logo-eyebrow {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  margin-bottom: 4px;
+}
+.sidebar-logo-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--gold);
+  line-height: 1.3;
+}
+
+.step-nav { padding: 12px 0; flex: 1; }
+.step-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: background 0.12s, border-color 0.12s;
+  text-decoration: none;
+  color: var(--ink-mid);
+}
+.step-nav-item:hover { background: rgba(255,255,255,0.04); color: var(--ink); }
+.step-nav-item.active { border-left-color: var(--gold); color: var(--ink); background: rgba(240,182,64,0.07); }
+.step-nav-item.done-step { color: var(--teal); border-left-color: var(--teal); }
+.step-num {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 800;
+  background: var(--surface); border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.step-nav-item.active .step-num { background: var(--gold); border-color: var(--gold); color: #1a0a00; }
+.step-nav-item.done-step .step-num { background: var(--teal); border-color: var(--teal); color: #001a14; }
+.step-nav-label { font-size: 12px; font-weight: 600; }
+.step-nav-sub   { font-size: 10px; color: var(--ink-dim); margin-top: 1px; }
+
+.sidebar-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ── Main ── */
+.main {
+  flex: 1;
+  padding: 28px 36px 80px;
+  max-width: 860px;
+}
+
+/* ── Step card ── */
+.step-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+.step-card-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-mid);
+}
+.step-badge {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; flex-shrink: 0;
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--ink-dim);
+}
+.step-badge.active { background: var(--gold); border-color: var(--gold-dk); color: #1a0a00; }
+.step-badge.done   { background: var(--teal); border-color: var(--teal-dk); color: #001a14; }
+.step-header-text { flex: 1; }
+.step-eyebrow { font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-dim); }
+.step-title { font-size: 15px; font-weight: 800; color: var(--ink); margin-top: 2px; }
+.step-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.step-body { padding: 20px; }
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 8px; border: 1px solid transparent;
+  font-size: 12px; font-weight: 700; cursor: pointer;
+  transition: opacity 0.12s, transform 0.1s, box-shadow 0.12s;
+  line-height: 1;
+}
+.btn:hover { opacity: 0.88; transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.btn-gold    { background: var(--gold); color: #1a0a00; box-shadow: 0 4px 16px rgba(240,182,64,0.2); }
+.btn-teal    { background: var(--teal); color: #001a14; box-shadow: 0 4px 16px rgba(56,191,160,0.2); }
+.btn-blue    { background: var(--blue); color: #fff; }
+.btn-ghost   { background: rgba(255,255,255,0.05); border-color: var(--border); color: var(--ink-mid); }
+.btn-danger  { background: var(--red); color: #fff; }
+.btn-sm { padding: 5px 10px; font-size: 11px; }
+
+/* ── Drop zone ── */
+.dropzone {
+  border: 2px dashed var(--border-lt);
+  border-radius: var(--r);
+  padding: 28px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  background: rgba(255,255,255,0.02);
+}
+.dropzone:hover, .dropzone.over {
+  border-color: var(--gold);
+  background: rgba(240,182,64,0.05);
+}
+.dropzone-icon { font-size: 28px; margin-bottom: 8px; }
+.dropzone-title { font-weight: 700; color: var(--ink); }
+.dropzone-sub { font-size: 12px; color: var(--ink-dim); margin-top: 4px; }
+
+/* ── File list ── */
+.file-list { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
+.file-item {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg-mid); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px; font-size: 12px;
+}
+.file-icon { font-size: 16px; flex-shrink: 0; }
+.file-name { font-weight: 600; color: var(--ink); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-meta { font-size: 11px; color: var(--ink-dim); flex-shrink: 0; }
+.file-remove { background: none; border: none; color: var(--ink-dim); cursor: pointer; padding: 2px 4px; border-radius: 4px; font-size: 14px; }
+.file-remove:hover { color: var(--red); background: rgba(224,85,96,0.1); }
+
+/* ── MOC ── */
+.moc-status {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; border-radius: 8px;
+  background: var(--bg-mid); border: 1px solid var(--border);
+  font-size: 12px; margin-bottom: 14px;
+}
+.moc-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-dim); flex-shrink: 0; }
+.moc-dot.loaded { background: var(--teal); }
+.moc-dot.bootstrap { background: var(--gold); }
+.moc-tree {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 11px; color: var(--ink-mid);
+  background: var(--bg-mid); border: 1px solid var(--border);
+  border-radius: 8px; padding: 12px 14px;
+  max-height: 180px; overflow-y: auto; line-height: 1.8;
+}
+
+/* ── Prompt box ── */
+.prompt-box {
+  background: var(--bg-mid); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px 16px;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 11.5px; line-height: 1.7; color: var(--ink-mid);
+  max-height: 320px; overflow-y: auto; white-space: pre-wrap;
+  word-break: break-word;
+}
+.prompt-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+/* ── Textarea / Input ── */
+.field, .area, .sel {
+  width: 100%; background: var(--bg-mid); border: 1px solid var(--border);
+  color: var(--ink); border-radius: 8px; outline: none;
+  transition: border-color 0.15s;
+  font-family: inherit; font-size: 13px;
+}
+.field, .sel { padding: 9px 12px; min-height: 40px; }
+.area { padding: 10px 12px; resize: vertical; font-family: 'Cascadia Code','Fira Code',monospace; font-size: 12px; }
+.field:focus, .area:focus, .sel:focus { border-color: var(--blue); }
+label.lbl { display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 6px; }
+
+/* ── Note cards ── */
+.note-cards { display: flex; flex-direction: column; gap: 10px; }
+.note-card {
+  border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  background: var(--bg-mid);
+}
+.note-card.conflict { border-color: rgba(240,182,64,0.4); }
+.note-card-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; cursor: pointer;
+  transition: background 0.12s;
+}
+.note-card-header:hover { background: rgba(255,255,255,0.03); }
+.note-path {
+  font-family: 'Cascadia Code','Fira Code',monospace;
+  font-size: 11px; color: var(--teal); font-weight: 600; flex: 1;
+}
+.note-title { font-size: 13px; font-weight: 700; color: var(--ink); flex: 2; }
+.note-type-badge {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 999px; border: 1px solid var(--border);
+  color: var(--ink-dim);
+}
+.note-type-badge.concept   { border-color: var(--blue);   color: var(--blue); }
+.note-type-badge.process   { border-color: var(--teal);   color: var(--teal); }
+.note-type-badge.reference { border-color: var(--purple); color: var(--purple); }
+.note-type-badge.example   { border-color: var(--gold);   color: var(--gold); }
+.note-expand-icon { color: var(--ink-dim); font-size: 12px; transition: transform 0.15s; }
+.note-expand-icon.open { transform: rotate(90deg); }
+
+.note-card-body {
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+  display: none;
+}
+.note-card-body.open { display: block; }
+.note-edit-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;
+}
+.note-edit-full { grid-column: 1 / -1; }
+.note-desc-text { font-size: 12px; color: var(--ink-mid); margin-bottom: 10px; line-height: 1.6; }
+.note-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.note-tag {
+  font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+  background: rgba(255,255,255,0.06); border: 1px solid var(--border); color: var(--ink-dim);
+}
+.flashcard-count { font-size: 11px; color: var(--ink-dim); margin-top: 8px; }
+.conflict-badge {
+  font-size: 10px; font-weight: 700; color: var(--gold);
+  background: rgba(240,182,64,0.1); border: 1px solid rgba(240,182,64,0.3);
+  border-radius: 6px; padding: 2px 8px; flex-shrink: 0;
+}
+
+/* ── Notice / callout ── */
+.notice {
+  border-left: 3px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  border-radius: 0 8px 8px 0;
+  padding: 10px 14px; font-size: 12px; color: var(--ink-mid);
+  line-height: 1.6; margin: 10px 0;
+}
+.notice.gold   { border-left-color: var(--gold);   background: rgba(240,182,64,0.06); }
+.notice.teal   { border-left-color: var(--teal);   background: rgba(56,191,160,0.06); }
+.notice.blue   { border-left-color: var(--blue);   background: rgba(80,144,224,0.06); }
+.notice.red    { border-left-color: var(--red);    background: rgba(224,85,96,0.06); }
+
+/* ── KPI strip ── */
+.kpi-strip { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.kpi { background: var(--bg-mid); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; min-width: 90px; }
+.kpi-val { font-size: 18px; font-weight: 800; color: var(--gold); line-height: 1.1; }
+.kpi-lbl { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-dim); margin-top: 2px; }
+
+/* ── Export list ── */
+.export-items { display: flex; flex-direction: column; gap: 8px; }
+.export-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--bg-mid);
+}
+.export-icon { font-size: 20px; flex-shrink: 0; }
+.export-info { flex: 1; }
+.export-name { font-weight: 700; font-size: 13px; }
+.export-desc { font-size: 11px; color: var(--ink-dim); margin-top: 2px; }
+.export-count { font-size: 11px; color: var(--teal); font-weight: 700; }
+
+/* ── Log ── */
+.log-list { display: flex; flex-direction: column; gap: 0; max-height: 180px; overflow-y: auto; }
+.log-item { padding: 6px 10px; border-left: 2px solid var(--border); margin-left: 4px; font-size: 11px; }
+.log-item.info    { border-left-color: var(--blue); }
+.log-item.success { border-left-color: var(--teal); }
+.log-item.error   { border-left-color: var(--red); }
+.log-item.warn    { border-left-color: var(--gold); }
+.log-time { font-size: 10px; color: var(--ink-dim); }
+.log-msg  { color: var(--ink-mid); margin-top: 1px; }
+
+/* ── Config panel ── */
+.config-panel {
+  padding: 14px 16px 0;
+  border-top: 1px solid var(--border);
+}
+.config-row { margin-bottom: 10px; }
+.config-toggle { display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 8px 16px; font-size: 11px; font-weight: 700; color: var(--ink-dim); letter-spacing: 0.1em; text-transform: uppercase; }
+.config-toggle:hover { color: var(--ink); }
+
+/* ── Flashcard editor ── */
+.fc-section { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px; }
+.fc-section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.fc-section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-dim); }
+.fc-cards { display: flex; flex-direction: column; gap: 8px; }
+.fc-card {
+  border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  background: var(--bg);
+}
+.fc-card-header {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  background: var(--surface-2); cursor: pointer;
+}
+.fc-type-sel {
+  font-size: 11px; font-weight: 700; background: transparent; border: none;
+  color: var(--teal); cursor: pointer; outline: none; font-family: inherit;
+}
+.fc-card-preview {
+  flex: 1; font-size: 12px; color: var(--ink-mid);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fc-del { background: none; border: none; color: var(--ink-dim); cursor: pointer; font-size: 14px; padding: 2px 4px; border-radius: 4px; }
+.fc-del:hover { color: var(--red); background: rgba(224,85,96,0.1); }
+.fc-card-body { padding: 12px; display: none; }
+.fc-card-body.open { display: block; }
+.fc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.fc-full { grid-column: 1/-1; }
+.fc-choices-hint { font-size: 10px; color: var(--ink-dim); margin-top: 3px; }
+
+/* ── Denoising ── */
+.denoise-toggle {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  font-size: 12px; font-weight: 600; color: var(--ink-dim); margin-bottom: 12px;
+  padding: 8px 12px; border: 1px dashed var(--border); border-radius: 8px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.denoise-toggle:hover { border-color: var(--border-lt); color: var(--ink); }
+.denoise-toggle.active { border-color: var(--gold); color: var(--gold); border-style: solid; }
+.denoise-toggle input[type=checkbox] { accent-color: var(--gold); }
+.denoise-panel { display: none; }
+.denoise-panel.open { display: block; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── Divider ── */
+.row { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.col { flex: 1; min-width: 0; }
+hr.divider { border: 0; border-top: 1px solid var(--border); margin: 16px 0; }
+.mono { font-family: 'Cascadia Code','Fira Code',monospace; }
+
+/* ── Responsive ── */
+@media (max-width: 760px) {
+  .sidebar { display: none; }
+  .main { padding: 16px 14px 60px; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- ── SIDEBAR ── -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div class="sidebar-logo-eyebrow">Single-File · Vanilla JS</div>
+    <div class="sidebar-logo-title">Zettelkasten-Ingestor</div>
+  </div>
+
+  <div class="step-nav">
+    <a class="step-nav-item" href="#s1" id="nav1">
+      <div class="step-num">1</div>
+      <div>
+        <div class="step-nav-label">Material</div>
+        <div class="step-nav-sub" id="nav1-sub">Dateien laden</div>
+      </div>
+    </a>
+    <a class="step-nav-item" href="#s2" id="nav2">
+      <div class="step-num">2</div>
+      <div>
+        <div class="step-nav-label">Kontext / MOC</div>
+        <div class="step-nav-sub" id="nav2-sub">MOC laden</div>
+      </div>
+    </a>
+    <a class="step-nav-item" href="#s3" id="nav3">
+      <div class="step-num">3</div>
+      <div>
+        <div class="step-nav-label">Analyse-Prompt</div>
+        <div class="step-nav-sub" id="nav3-sub">Prompt erzeugen</div>
+      </div>
+    </a>
+    <a class="step-nav-item" href="#s4" id="nav4">
+      <div class="step-num">4</div>
+      <div>
+        <div class="step-nav-label">Notizen</div>
+        <div class="step-nav-sub" id="nav4-sub">Editor</div>
+      </div>
+    </a>
+    <a class="step-nav-item" href="#s5" id="nav5">
+      <div class="step-num">5</div>
+      <div>
+        <div class="step-nav-label">Export</div>
+        <div class="step-nav-sub" id="nav5-sub">Markdown · MOC · Anki</div>
+      </div>
+    </a>
+  </div>
+
+  <div class="sidebar-footer">
+    <button class="btn btn-ghost btn-sm" id="btnBackup" style="width:100%;justify-content:center">💾 Workspace sichern</button>
+    <button class="btn btn-ghost btn-sm" id="btnRestore" style="width:100%;justify-content:center">📂 Workspace laden</button>
+    <button class="btn btn-ghost btn-sm" id="btnClear" style="width:100%;justify-content:center;color:var(--red)">🗑 Workspace leeren</button>
+    <div class="config-toggle" id="configToggle">⚙ Einstellungen <span id="configCaret">▸</span></div>
+    <div id="configPanel" style="display:none" class="config-panel">
+      <div class="config-row">
+        <label class="lbl">Pfad-Präfix</label>
+        <input class="field mono" id="cfgPrefix" placeholder="z.B. sql oder lf3.datenbanken" />
+      </div>
+      <div class="config-row">
+        <label class="lbl">Anki-Deck</label>
+        <input class="field" id="cfgAnkiDeck" placeholder="Default" />
+      </div>
+      <div class="config-row" style="padding-bottom:10px">
+        <label class="lbl">Obsidian-URL (optional)</label>
+        <input class="field mono" id="cfgObsidianUrl" placeholder="http://127.0.0.1:27124" />
+      </div>
+      <div class="config-row" style="padding-bottom:10px">
+        <label class="lbl">Obsidian API-Token (optional)</label>
+        <input class="field" id="cfgObsidianToken" type="password" placeholder="Bearer-Token aus Plugin-Einstellungen" />
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- ── MAIN ── -->
+<main class="main">
+
+  <!-- KPI Strip -->
+  <div class="kpi-strip" id="kpiStrip">
+    <div class="kpi"><div class="kpi-val" id="kpiFiles">0</div><div class="kpi-lbl">Dateien</div></div>
+    <div class="kpi"><div class="kpi-val" id="kpiMoc">—</div><div class="kpi-lbl">MOC-Einträge</div></div>
+    <div class="kpi"><div class="kpi-val" id="kpiNotes">0</div><div class="kpi-lbl">Notizen</div></div>
+    <div class="kpi"><div class="kpi-val" id="kpiCards">0</div><div class="kpi-lbl">Flashcards</div></div>
+  </div>
+
+  <!-- ── STEP 1: MATERIAL ── -->
+  <div class="step-card" id="s1">
+    <div class="step-card-header">
+      <div class="step-badge active" id="badge1">1</div>
+      <div class="step-header-text">
+        <div class="step-eyebrow">Schritt 1</div>
+        <div class="step-title">Material laden</div>
+      </div>
+      <div class="step-actions">
+        <button class="btn btn-ghost btn-sm" id="btnFilePick">📁 Dateien wählen</button>
+        <button class="btn btn-ghost btn-sm" id="btnPasteText">📋 Text einfügen</button>
+      </div>
+    </div>
+    <div class="step-body">
+      <input type="file" id="fileInput" multiple accept=".md,.markdown,.txt,.text,.json,.html,.log,.csv" style="display:none" />
+      <div class="dropzone" id="dropzone">
+        <div class="dropzone-icon">📂</div>
+        <div class="dropzone-title">Dateien hier ablegen</div>
+        <div class="dropzone-sub">Markdown · TXT · JSON-Export · HTML · CSV — mehrere Dateien möglich</div>
+      </div>
+      <div class="file-list" id="fileList"></div>
+      <div id="pasteArea" style="display:none;margin-top:14px">
+        <label class="lbl">Rohtext direkt einfügen</label>
+        <textarea class="area" id="pasteText" rows="6" placeholder="Chat-Export, Notizen, Unterrichtsmitschrift …"></textarea>
+        <button class="btn btn-gold btn-sm" style="margin-top:8px" id="btnAddPaste">✚ Als Textdatei übernehmen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STEP 2: MOC / KONTEXT ── -->
+  <div class="step-card" id="s2">
+    <div class="step-card-header">
+      <div class="step-badge" id="badge2">2</div>
+      <div class="step-header-text">
+        <div class="step-eyebrow">Schritt 2</div>
+        <div class="step-title">Kontext &amp; MOC</div>
+      </div>
+      <div class="step-actions">
+        <button class="btn btn-ghost btn-sm" id="btnMocPick">🗂 MOC laden</button>
+        <button class="btn btn-ghost btn-sm" id="btnBootstrap">⚡ Bootstrap-Modus</button>
+        <button class="btn btn-ghost btn-sm btn-danger" id="btnMocClear" style="display:none">✕ MOC entfernen</button>
+      </div>
+    </div>
+    <div class="step-body">
+      <input type="file" id="mocInput" accept=".md,.markdown,.txt,text/plain" style="display:none" />
+      <div class="moc-status" id="mocStatus">
+        <div class="moc-dot" id="mocDot"></div>
+        <div id="mocStatusText">Keine MOC geladen. Datei laden oder Bootstrap-Modus aktivieren.</div>
+      </div>
+      <div id="mocTreeWrap" style="display:none">
+        <div class="moc-tree" id="mocTree"></div>
+      </div>
+      <div class="notice gold" id="bootstrapNotice" style="display:none">
+        <strong>Bootstrap-Modus aktiv.</strong> Kein bestehender Zettelkasten nötig — die KI schlägt beim ersten Durchlauf eine erste Baumstruktur vor. Du prüfst und passt sie danach an.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STEP 3: PROMPT ── -->
+  <div class="step-card" id="s3">
+    <div class="step-card-header">
+      <div class="step-badge" id="badge3">3</div>
+      <div class="step-header-text">
+        <div class="step-eyebrow">Schritt 3</div>
+        <div class="step-title">Analyse-Prompt</div>
+      </div>
+      <div class="step-actions">
+        <button class="btn btn-gold" id="btnGenPrompt">⚡ Prompt erzeugen</button>
+      </div>
+    </div>
+    <div class="step-body">
+      <div id="promptEmpty" class="notice blue">
+        Zuerst Material laden (Schritt 1), dann Prompt erzeugen. Danach den Prompt kopieren, in Claude / ChatGPT einfügen und die Materialien als Datei-Anhang beifügen.
+      </div>
+      <div id="denoiseSection">
+        <label class="denoise-toggle" id="denoiseToggle">
+          <input type="checkbox" id="denoiseCheck" /> Denoising aktivieren
+          <span style="margin-left:4px;font-size:11px;color:var(--ink-dim);font-weight:400">— für verrauschte Chat-Logs / Debug-Exporte</span>
+        </label>
+        <div class="denoise-panel" id="denoisePanel">
+          <div class="notice gold" style="margin-bottom:12px">
+            Kopiere den Denoise-Prompt, füge ihn mit dem Rohmaterial in die KI ein. Das bereinigte Ergebnis hier einsetzen — es wird als Basis für den Analyse-Prompt verwendet.
+          </div>
+          <label class="lbl">Denoise-Prompt</label>
+          <div class="prompt-box" id="denoisePromptBox" style="max-height:160px"></div>
+          <div class="prompt-actions">
+            <button class="btn btn-ghost btn-sm" id="btnCopyDenoisePrompt">📋 Denoise-Prompt kopieren</button>
+          </div>
+          <div style="margin-top:12px">
+            <label class="lbl">Bereinigtes Ergebnis (von KI)</label>
+            <textarea class="area" id="denoiseResult" rows="6" placeholder="Hier das bereinigte Material einsetzen …"></textarea>
+          </div>
+          <hr class="divider" />
+        </div>
+      </div>
+      <div id="promptReady" style="display:none">
+        <div class="notice teal" style="margin-bottom:14px">
+          <strong>Prompt bereit.</strong> Kopiere ihn und füge ihn in Claude / ChatGPT ein — hänge die Quelldateien direkt im Chat an. Das KI-Ergebnis (JSON) unten einsetzen.
+        </div>
+        <div class="prompt-box" id="promptBox"></div>
+        <div class="prompt-actions">
+          <button class="btn btn-gold" id="btnCopyPrompt">📋 Prompt kopieren</button>
+          <button class="btn btn-ghost btn-sm" id="btnRegenPrompt">↻ Neu erzeugen</button>
+        </div>
+        <hr class="divider" />
+        <label class="lbl">KI-Antwort einsetzen (JSON)</label>
+        <textarea class="area" id="kiResponseArea" rows="8" placeholder='Hier die JSON-Antwort der KI einfügen …&#10;&#10;{"schema":"zettelkasten-ingestor-v1","notes":[…]}'></textarea>
+        <div class="prompt-actions">
+          <button class="btn btn-teal" id="btnParseKi">✓ Parsen &amp; Notizen laden</button>
+          <div id="parseStatus" style="font-size:12px;color:var(--ink-dim);align-self:center"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STEP 4: NOTES EDITOR ── -->
+  <div class="step-card" id="s4">
+    <div class="step-card-header">
+      <div class="step-badge" id="badge4">4</div>
+      <div class="step-header-text">
+        <div class="step-eyebrow">Schritt 4</div>
+        <div class="step-title">Notizen prüfen &amp; bearbeiten</div>
+      </div>
+      <div class="step-actions">
+        <button class="btn btn-ghost btn-sm" id="btnAddNote">✚ Notiz hinzufügen</button>
+        <button class="btn btn-ghost btn-sm" id="btnBranchRename">✏ Zweig umbenennen</button>
+      </div>
+    </div>
+    <div class="step-body">
+      <div id="notesEmpty" class="notice blue">
+        Nach dem Parsen der KI-Antwort erscheinen hier alle atomaren Notizen. Du kannst Pfade, Titel und Metadaten direkt bearbeiten.
+      </div>
+      <div id="branchRenameBox" style="display:none;margin-bottom:14px">
+        <div class="notice gold">
+          <strong>Zweig-Umbenennung.</strong> Alle Notizen deren Pfad mit dem alten Präfix beginnt werden angepasst.
+          <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap;align-items:center">
+            <input class="field mono" id="branchOld" placeholder="alter Präfix (z.B. sql.join)" style="flex:1;min-width:120px" />
+            <span style="color:var(--ink-dim)">→</span>
+            <input class="field mono" id="branchNew" placeholder="neuer Präfix" style="flex:1;min-width:120px" />
+            <button class="btn btn-gold btn-sm" id="btnBranchApply">Anwenden</button>
+            <button class="btn btn-ghost btn-sm" id="btnBranchCancel">Abbrechen</button>
+          </div>
+        </div>
+      </div>
+      <div class="note-cards" id="noteCards"></div>
+    </div>
+  </div>
+
+  <!-- ── STEP 5: EXPORT ── -->
+  <div class="step-card" id="s5">
+    <div class="step-card-header">
+      <div class="step-badge" id="badge5">5</div>
+      <div class="step-header-text">
+        <div class="step-eyebrow">Schritt 5</div>
+        <div class="step-title">Export</div>
+      </div>
+      <div class="step-actions">
+        <button class="btn btn-teal" id="btnExportAll">📦 Alles als ZIP exportieren</button>
+      </div>
+    </div>
+    <div class="step-body">
+      <div id="exportItems" class="export-items">
+        <div class="notice blue">Notizen erstellen (Schritt 3–4), um den Export vorzubereiten.</div>
+      </div>
+      <hr class="divider" />
+      <div style="font-size:11px;color:var(--ink-dim);margin-bottom:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase">Einzelexporte</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-ghost btn-sm" id="btnExportMd">⬇ Markdown-Dateien</button>
+        <button class="btn btn-ghost btn-sm" id="btnExportMoc">⬇ MOC.md</button>
+        <button class="btn btn-ghost btn-sm" id="btnExportAnki">⬇ Anki-CSVs</button>
+      </div>
+
+      <hr class="divider" />
+      <div style="font-size:11px;color:var(--ink-dim);margin-bottom:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase">Obsidian Direktexport</div>
+      <div class="notice blue" style="margin-bottom:12px">
+        Erfordert das <strong>Local REST API</strong>-Plugin in Obsidian (<code>obsidian-local-rest-api</code>). URL und Token in den Einstellungen konfigurieren. Jede Notiz wird als separate .md-Datei in deinen Vault geschrieben.
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <input class="field mono" id="obsidianVaultFolder" placeholder="Vault-Unterordner (z.B. Zettelkasten)" style="flex:1;min-width:160px" />
+        <button class="btn btn-blue" id="btnObsidianExport">🪨 Nach Obsidian senden</button>
+      </div>
+      <div id="obsidianLog" style="display:none">
+        <div style="font-size:11px;color:var(--ink-dim);margin-bottom:6px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase">Obsidian-Status</div>
+        <div id="obsidianLogList" class="log-list" style="max-height:140px"></div>
+      </div>
+
+      <hr class="divider" />
+      <div style="font-size:11px;color:var(--ink-dim);margin-bottom:6px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase">Aktivitätslog</div>
+      <div class="log-list" id="logList"><div class="log-item" style="color:var(--ink-dim)">Bereit.</div></div>
+    </div>
+  </div>
+
+</main>
+</div>
+
+<script>
+// ════════════════════════════════════════════════
+// DATA MODEL
+// ════════════════════════════════════════════════
+var LKEY = 'zettelkasten_ingestor_v1';
+var S = {};
+var saveTimer = null;
+
+function defaults() {
+  return {
+    version: 1,
+    sourceFiles: [],
+    mocIndex: { loadedAt: '', sourceName: '', entries: [], bootstrapMode: false },
+    notes: [],
+    analysisPrompt: '',
+    rawKiResponse: '',
+    denoise: {
+      active: false,
+      prompt: [
+        'Du bereinigst einen technischen Chat- oder Log-Export für eine Lern-Pipeline.',
+        'Entferne Smalltalk, Höflichkeitsfloskeln, Wiederholungen, Sackgassen und irrelevanten Kontext.',
+        'Behalte nur belastbare Substanz: Code, Erklärungen, API-Aufrufe, Fehlermeldungen mit Ursachen, Debugging-Erkenntnisse, Designentscheidungen, Best Practices.',
+        'Wenn frühe Varianten verworfen wurden, behalte die Endfassung und erwähne kurz, dass frühere Varianten verworfen wurden.',
+        'Strukturiere das Ergebnis als sauberes Markdown. Sprache: dieselbe wie im Quellmaterial.'
+      ].join('\n'),
+      result: ''
+    },
+    config: { prefix: '', ankiDeck: 'Default', obsidianUrl: '' },
+    logs: []
+  };
+}
+
+function makeFlashcard(data) {
+  var d = data || {};
+  return {
+    id:         d.id         || uid(),
+    cardType:   d.cardType   || 'mc',
+    learnable:  d.learnable  || '',
+    definition: d.definition || '',
+    choices:    Array.isArray(d.choices) ? d.choices : [],
+    extra:      d.extra      || ''
+  };
+}
+
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function nowIso() { return new Date().toISOString(); }
+function nowDate() { return new Date().toISOString().slice(0, 10); }
+
+function makeNote(data) {
+  var d = data || {};
+  return {
+    id:          d.id          || uid(),
+    path:        d.path        || '',
+    title:       d.title       || '',
+    desc:        d.desc        || '',
+    type:        d.type        || 'concept',
+    tags:        Array.isArray(d.tags) ? d.tags : [],
+    body:        d.body        || '',
+    mocRef:      d.mocRef      || null,
+    mocConflict: !!d.mocConflict,
+    flashcards:  Array.isArray(d.flashcards) ? d.flashcards : [],
+    createdAt:   d.createdAt   || nowIso(),
+    updatedAt:   d.updatedAt   || nowIso()
+  };
+}
+
+function makeMocEntry(data) {
+  var d = data || {};
+  var path = (d.path || '').trim().replace(/\.md$/i, '').replace(/\\/g, '.').replace(/\//g, '.');
+  var segs = path ? path.split('.').filter(Boolean) : [];
+  return { path: path, summary: (d.summary || '').trim(), depth: segs.length, segments: segs };
+}
+
+// ════════════════════════════════════════════════
+// PERSISTENCE
+// ════════════════════════════════════════════════
+function queueSave() { clearTimeout(saveTimer); saveTimer = setTimeout(persist, 300); }
+
+function persist() {
+  try { localStorage.setItem(LKEY, JSON.stringify(S)); } catch(e) { log('localStorage voll: ' + e.message, 'error'); }
+}
+
+function loadState() {
+  S = defaults();
+  try {
+    var raw = localStorage.getItem(LKEY);
+    if (raw) {
+      var p = JSON.parse(raw);
+      S = Object.assign(defaults(), p);
+      S.notes = (S.notes || []).map(makeNote);
+      S.notes.forEach(function(n) { n.flashcards = (n.flashcards||[]).map(makeFlashcard); });
+      if (S.mocIndex && S.mocIndex.entries) S.mocIndex.entries = S.mocIndex.entries.map(makeMocEntry);
+      else S.mocIndex = defaults().mocIndex;
+      S.config = Object.assign(defaults().config, S.config || {});
+      S.denoise = Object.assign(defaults().denoise, S.denoise || {});
+      S.logs = S.logs || [];
+    }
+  } catch(e) { S = defaults(); }
+}
+
+// ════════════════════════════════════════════════
+// LOGGING
+// ════════════════════════════════════════════════
+function log(msg, kind) {
+  var entry = { id: uid(), at: nowIso(), kind: kind || 'info', message: msg };
+  S.logs = S.logs || [];
+  S.logs.unshift(entry);
+  if (S.logs.length > 60) S.logs = S.logs.slice(0, 60);
+  renderLog();
+  queueSave();
+}
+
+function renderLog() {
+  var el = document.getElementById('logList');
+  if (!el) return;
+  if (!S.logs || !S.logs.length) { el.innerHTML = '<div class="log-item" style="color:var(--ink-dim)">Bereit.</div>'; return; }
+  el.innerHTML = S.logs.slice(0, 20).map(function(l) {
+    return '<div class="log-item ' + esc(l.kind) + '"><div class="log-time">' + new Date(l.at).toLocaleTimeString('de-DE') + '</div><div class="log-msg">' + esc(l.message) + '</div></div>';
+  }).join('');
+}
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ════════════════════════════════════════════════
+// FILE PARSING
+// ════════════════════════════════════════════════
+function fileIcon(name) {
+  var ext = name.split('.').pop().toLowerCase();
+  if (ext === 'md' || ext === 'markdown') return '📝';
+  if (ext === 'json') return '🗃';
+  if (ext === 'html' || ext === 'htm') return '🌐';
+  if (ext === 'csv') return '📊';
+  return '📄';
+}
+
+function fmtChars(n) { return n > 1000 ? (n/1000).toFixed(1) + 'k' : n; }
+
+function addFiles(fileObjs) {
+  var readers = Array.from(fileObjs).map(function(file) {
+    return new Promise(function(resolve) {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var content = e.target.result;
+        S.sourceFiles.push({ id: uid(), name: file.name, type: file.type, chars: content.length, content: content });
+        resolve();
+      };
+      reader.readAsText(file, 'UTF-8');
+    });
+  });
+  Promise.all(readers).then(function() {
+    log('Dateien geladen: ' + fileObjs.length, 'success');
+    queueSave();
+    renderAll();
+  });
+}
+
+// ════════════════════════════════════════════════
+// MOC PARSER
+// ════════════════════════════════════════════════
+function parseMoc(text) {
+  // Sucht [[wikilink]] pattern + optionaler Beschreibung dahinter
+  var entries = [];
+  var lines = text.split('\n');
+  var wikilinkRe = /\[\[([^\]]+)\]\]/g;
+  lines.forEach(function(line) {
+    var m;
+    while ((m = wikilinkRe.exec(line)) !== null) {
+      var raw = m[1].trim();
+      var path = raw.replace(/\.md$/i, '').replace(/[|\#]/g, ''); // strip aliases
+      if (!path) continue;
+      // summary: rest of line after the link
+      var after = line.slice(wikilinkRe.lastIndex).replace(/^[\s\-–—:]+/, '').trim();
+      entries.push(makeMocEntry({ path: path, summary: after.slice(0, 140) }));
+    }
+    wikilinkRe.lastIndex = 0;
+  });
+  // deduplicate by path
+  var seen = {};
+  return entries.filter(function(e) { if (seen[e.path]) return false; seen[e.path] = true; return !!e.path; });
+}
+
+function buildMocTreeText(entries) {
+  // Build a compact tree view
+  var tree = {};
+  entries.forEach(function(e) {
+    var parts = e.segments;
+    var node = tree;
+    parts.forEach(function(p) { node[p] = node[p] || {}; node = node[p]; });
+    node.__entry = e;
+  });
+  var lines = [];
+  function walk(node, prefix, depth) {
+    Object.keys(node).filter(function(k) { return k !== '__entry'; }).forEach(function(k) {
+      var indent = '  '.repeat(depth);
+      var e = node[k].__entry;
+      var sum = e && e.summary ? ' — ' + e.summary.slice(0, 60) : '';
+      lines.push(indent + (depth === 0 ? '▸ ' : '· ') + k + sum);
+      walk(node[k], prefix + k + '.', depth + 1);
+    });
+  }
+  walk(tree, '', 0);
+  return lines.join('\n') || '(leer)';
+}
+
+// ════════════════════════════════════════════════
+// PROMPT ASSEMBLER
+// ════════════════════════════════════════════════
+function buildAnalysisPrompt() {
+  var hasMoc = S.mocIndex.entries.length > 0;
+  var bootstrap = S.mocIndex.bootstrapMode;
+  var prefix = (S.config.prefix || '').trim();
+
+  var mocSection = '';
+  if (hasMoc) {
+    var topEntries = S.mocIndex.entries.slice(0, 60);
+    var lines = topEntries.map(function(e) {
+      return '[[' + e.path + ']]' + (e.summary ? ' — ' + e.summary : '');
+    });
+    mocSection = [
+      '## BESTEHENDE WISSENSSTRUKTUR (MOC)',
+      'Die folgenden Einträge existieren bereits in deinem Zettelkasten.',
+      'Ordne neue Notizen bevorzugt in vorhandene Pfade ein.',
+      'Wenn ein Inhalt in keinen bestehenden Pfad passt, schlage einen neuen Pfad vor.',
+      '',
+      lines.join('\n'),
+      ''
+    ].join('\n');
+  } else if (bootstrap) {
+    mocSection = [
+      '## BOOTSTRAP-MODUS',
+      'Es gibt noch keinen bestehenden Zettelkasten.',
+      'Schlage selbst eine erste sinnvolle Baumstruktur vor.',
+      'Die Pfade im JSON-Feld "moc" bilden die erste MOC.',
+      ''
+    ].join('\n');
+  }
+
+  var prefixHint = prefix ? '\nDateipfade beginnen mit dem Präfix "' + prefix + '." (z.B. ' + prefix + '.thema.unterkonzept).' : '';
+
+  return [
+    'Du bist ein Zettelkasten-Assistent für Unterrichts- und Lernmaterial.',
+    '',
+    '## AUFGABE',
+    'Analysiere das beigefügte Material und zerlege es in möglichst atomare Notizen.',
+    'Jede Notiz = eine klar abgrenzbare Idee, ein Konzept, ein Prozess oder ein Beispiel.',
+    'Keine Riesennotizen — lieber mehr kleine als eine große.',
+    prefixHint,
+    '',
+    mocSection,
+    '## RÜCKGABEFORMAT',
+    'Antworte AUSSCHLIESSLICH mit folgendem JSON — kein Text davor oder danach:',
+    '',
+    JSON.stringify({
+      schema: 'zettelkasten-ingestor-v1',
+      sourceHint: '<kurze Beschreibung des Materials>',
+      notes: [
+        {
+          path: (prefix ? prefix + '.' : '') + 'thema.konzept',
+          title: 'Lesbarer Notizname',
+          desc: 'Ein-Satz-Zusammenfassung dieser Notiz (für MOC-Eintrag).',
+          type: 'concept',
+          tags: ['thema', 'tag2'],
+          body: '## Notizinhalt als Markdown\n\n...',
+          mocRef: hasMoc ? 'nächster_passender_moc_pfad_oder_null' : null,
+          flashcards: [
+            {
+              cardType: 'mc',
+              learnable: 'Begriff oder kurze Frage',
+              definition: 'Vollständige Antwort als Satz',
+              choices: ['Richtige Antwort', 'Ablenkeroption 2', 'Ablenkeroption 3', 'Ablenkeroption 4'],
+              extra: 'Merker, Abgrenzung oder Beispiel — nie leer'
+            },
+            {
+              cardType: 'tapping',
+              learnable: 'Vollständiger Satz max 12 Wörter für Tapping',
+              definition: 'Kurze Erklärung was der Satz bedeutet',
+              choices: [],
+              extra: 'Kontext oder Merker'
+            }
+          ]
+        }
+      ],
+      moc: bootstrap ? [{ path: 'vorgeschlagener.pfad', summary: 'Worum geht es hier' }] : []
+    }, null, 2),
+    '',
+    '## PFLICHTFELDER pro Notiz',
+    '- path: Punkt-notation, Kleinbuchstaben, keine Sonderzeichen (z.B. sql.join.inner)',
+    '- title: lesbarer Name',
+    '- desc: ein Satz, präzise',
+    '- type: concept | process | reference | example',
+    '- tags: Array mit 2–5 relevanten Tags',
+    '- body: vollständiger Markdown-Inhalt der Notiz',
+    '- flashcards: mindestens 1–2 pro Notiz (mc oder tapping)',
+    '  → choices bei mc: genau 4 Optionen, erste = richtige Antwort',
+    '  → extra: nie leer',
+    '',
+    '## QUALITÄTSKRITERIEN',
+    '- Notizen sind atomar: eine Idee pro Notiz',
+    '- body enthält Substanz, keine leeren Hüllen',
+    '- desc ist präzise genug für einen MOC-Eintrag',
+    '- Pfade sind konsistent und bilden eine logische Hierarchie',
+    '- Flashcards testen das Wesentliche — keine trivialen Fragen',
+    '',
+    'Beginne sofort mit dem JSON. Kein einleitender Text.'
+  ].filter(function(l) { return l !== undefined; }).join('\n');
+}
+
+// ════════════════════════════════════════════════
+// KI-JSON PARSER + VALIDATOR
+// ════════════════════════════════════════════════
+function parseKiResponse(raw) {
+  var text = raw.trim();
+  // Strip markdown code fences if present
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '');
+  var parsed;
+  try { parsed = JSON.parse(text); } catch(e) { throw new Error('Ungültiges JSON: ' + e.message); }
+  if (!parsed || typeof parsed !== 'object') throw new Error('JSON muss ein Objekt sein');
+  if (parsed.schema && parsed.schema !== 'zettelkasten-ingestor-v1') {
+    log('Hinweis: schema-Feld ist "' + parsed.schema + '" (erwartet: zettelkasten-ingestor-v1)', 'warn');
+  }
+  if (!Array.isArray(parsed.notes)) throw new Error('Pflichtfeld "notes" fehlt oder ist kein Array');
+  if (parsed.notes.length === 0) throw new Error('"notes" ist leer — KI hat keine Notizen generiert');
+
+  var notes = parsed.notes.map(function(n, i) {
+    if (!n.path) throw new Error('notes[' + i + '].path fehlt');
+    if (!n.title) throw new Error('notes[' + i + '].title fehlt');
+    return makeNote(n);
+  });
+
+  // Match against MOC
+  notes = notes.map(function(note) {
+    if (!S.mocIndex.entries.length) return note;
+    var exact = S.mocIndex.entries.find(function(e) { return e.path === note.mocRef; });
+    if (note.mocRef && !exact) {
+      note.mocConflict = true;
+      log('MOC-Konflikt: "' + note.path + '" → mocRef "' + note.mocRef + '" nicht in MOC gefunden', 'warn');
+    }
+    return note;
+  });
+
+  // Bootstrap: load new MOC entries
+  if (S.mocIndex.bootstrapMode && Array.isArray(parsed.moc) && parsed.moc.length) {
+    S.mocIndex.entries = parsed.moc.map(makeMocEntry);
+    S.mocIndex.bootstrapMode = false;
+    log('Bootstrap: ' + parsed.moc.length + ' MOC-Einträge aus KI übernommen', 'success');
+  }
+
+  return notes;
+}
+
+// ════════════════════════════════════════════════
+// RENDER
+// ════════════════════════════════════════════════
+function renderAll() {
+  renderKpis();
+  renderFileList();
+  renderMoc();
+  renderPromptSection();
+  renderNotes();
+  renderExport();
+  renderNavBadges();
+}
+
+function renderKpis() {
+  setText('kpiFiles', S.sourceFiles.length || '0');
+  var mocCount = S.mocIndex.entries.length;
+  setText('kpiMoc', mocCount ? mocCount : (S.mocIndex.bootstrapMode ? '⚡' : '—'));
+  setText('kpiNotes', S.notes.length || '0');
+  var cards = S.notes.reduce(function(a, n) { return a + (n.flashcards ? n.flashcards.length : 0); }, 0);
+  setText('kpiCards', cards || '0');
+}
+
+function setText(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
+
+function renderFileList() {
+  var el = document.getElementById('fileList');
+  if (!el) return;
+  if (!S.sourceFiles.length) { el.innerHTML = ''; return; }
+  el.innerHTML = S.sourceFiles.map(function(f) {
+    return '<div class="file-item">' +
+      '<span class="file-icon">' + fileIcon(f.name) + '</span>' +
+      '<span class="file-name">' + esc(f.name) + '</span>' +
+      '<span class="file-meta">' + fmtChars(f.chars) + ' Z.</span>' +
+      '<button class="file-remove" data-fid="' + esc(f.id) + '" title="Entfernen">✕</button>' +
+      '</div>';
+  }).join('');
+}
+
+function renderMoc() {
+  var hasMoc = S.mocIndex.entries.length > 0;
+  var bootstrap = S.mocIndex.bootstrapMode;
+  var dot = document.getElementById('mocDot');
+  var txt = document.getElementById('mocStatusText');
+  var treeWrap = document.getElementById('mocTreeWrap');
+  var treeEl = document.getElementById('mocTree');
+  var bsNotice = document.getElementById('bootstrapNotice');
+  var clearBtn = document.getElementById('btnMocClear');
+
+  if (hasMoc) {
+    dot.className = 'moc-dot loaded';
+    txt.textContent = S.mocIndex.entries.length + ' MOC-Einträge geladen aus "' + (S.mocIndex.sourceName || 'MOC') + '"';
+    treeWrap.style.display = '';
+    treeEl.textContent = buildMocTreeText(S.mocIndex.entries);
+    bsNotice.style.display = 'none';
+    clearBtn.style.display = '';
+  } else if (bootstrap) {
+    dot.className = 'moc-dot bootstrap';
+    txt.textContent = 'Bootstrap-Modus — KI schlägt erste Struktur vor';
+    treeWrap.style.display = 'none';
+    bsNotice.style.display = '';
+    clearBtn.style.display = '';
+  } else {
+    dot.className = 'moc-dot';
+    txt.textContent = 'Keine MOC geladen. Datei laden oder Bootstrap-Modus aktivieren.';
+    treeWrap.style.display = 'none';
+    bsNotice.style.display = 'none';
+    clearBtn.style.display = 'none';
+  }
+}
+
+function renderPromptSection() {
+  var hasFiles = S.sourceFiles.length > 0;
+  var hasPrompt = !!S.analysisPrompt;
+  document.getElementById('promptEmpty').style.display = (hasFiles && hasPrompt) ? 'none' : '';
+  document.getElementById('promptReady').style.display = (hasFiles && hasPrompt) ? '' : 'none';
+  if (hasPrompt) document.getElementById('promptBox').textContent = S.analysisPrompt;
+  if (S.rawKiResponse) document.getElementById('kiResponseArea').value = S.rawKiResponse;
+}
+
+function renderFlashcardEditor(note) {
+  var cards = note.flashcards || [];
+  var cardHtml = cards.map(function(fc) {
+    var preview = fc.learnable ? fc.learnable.slice(0, 50) + (fc.learnable.length > 50 ? '…' : '') : '(leer)';
+    var choicesVal = Array.isArray(fc.choices) ? fc.choices.join(' | ') : '';
+    return [
+      '<div class="fc-card" id="fcc-' + esc(fc.id) + '">',
+        '<div class="fc-card-header" data-fcid="' + esc(fc.id) + '" data-nid="' + esc(note.id) + '">',
+          '<select class="fc-type-sel" data-fcfield="cardType" data-fcid="' + esc(fc.id) + '" data-nid="' + esc(note.id) + '">',
+            ['mc','tapping','cloze'].map(function(t) {
+              return '<option value="' + t + '"' + (fc.cardType === t ? ' selected' : '') + '>' + t.toUpperCase() + '</option>';
+            }).join(''),
+          '</select>',
+          '<span class="fc-card-preview">' + esc(preview) + '</span>',
+          '<button class="fc-del" data-delfcid="' + esc(fc.id) + '" data-nid="' + esc(note.id) + '" title="Karte löschen">✕</button>',
+        '</div>',
+        '<div class="fc-card-body" id="fcb-' + esc(fc.id) + '">',
+          '<div class="fc-grid">',
+            '<div class="fc-full"><label class="lbl">Learnable / Frage / Satz</label>',
+            '<input class="field" data-fcfield="learnable" data-fcid="' + esc(fc.id) + '" data-nid="' + esc(note.id) + '" value="' + esc(fc.learnable) + '" /></div>',
+            '<div class="fc-full"><label class="lbl">Definition / Antwort</label>',
+            '<input class="field" data-fcfield="definition" data-fcid="' + esc(fc.id) + '" data-nid="' + esc(note.id) + '" value="' + esc(fc.definition) + '" /></div>',
+            '<div class="fc-full"><label class="lbl">Choices (MC/Cloze — mit <code style="font-size:10px;padding:0 3px">|</code> trennen, genau 4)</label>',
+            '<input class="field mono" data-fcfield="choices" data-fcid="' + esc(fc.id) + '" data-nid="' + esc(note.id) + '" value="' + esc(choicesVal) + '" placeholder="Richtige Antwort | Option 2 | Option 3 | Option 4" />',
+            '<div class="fc-choices-hint">Erste Option = richtige Antwort. Bei Tapping leer lassen.</div></div>',
+            '<div class="fc-full"><label class="lbl">Extra (Merker / Beispiel — nie leer)</label>',
+            '<textarea class="area" rows="2" data-fcfield="extra" data-fcid="' + esc(fc.id) + '" data-nid="' + esc(note.id) + '">' + esc(fc.extra) + '</textarea></div>',
+          '</div>',
+        '</div>',
+      '</div>'
+    ].join('');
+  }).join('');
+
+  return [
+    '<div class="fc-section">',
+      '<div class="fc-section-header">',
+        '<span class="fc-section-title">💡 Flashcards (' + cards.length + ')</span>',
+        '<button class="btn btn-ghost btn-sm" data-addfcnid="' + esc(note.id) + '">+ Karte</button>',
+      '</div>',
+      cards.length ? '<div class="fc-cards">' + cardHtml + '</div>'
+        : '<div style="font-size:12px;color:var(--ink-dim);padding:6px 0">Keine Flashcards. Karte hinzufügen oder KI-Ergebnis mit Flashcards parsen.</div>',
+    '</div>'
+  ].join('');
+}
+
+function renderNotes() {
+  var el = document.getElementById('noteCards');
+  var emptyEl = document.getElementById('notesEmpty');
+  if (!S.notes.length) {
+    emptyEl.style.display = '';
+    el.innerHTML = '';
+    return;
+  }
+  emptyEl.style.display = 'none';
+  el.innerHTML = S.notes.map(function(note) {
+    var conflictBadge = note.mocConflict ? '<span class="conflict-badge">⚠ MOC-Konflikt</span>' : '';
+    var cardCount = (note.flashcards || []).length;
+    return [
+      '<div class="note-card' + (note.mocConflict ? ' conflict' : '') + '" id="nc-' + esc(note.id) + '">',
+        '<div class="note-card-header" data-nid="' + esc(note.id) + '">',
+          '<div class="note-path mono">' + esc(note.path || '—') + '</div>',
+          '<div class="note-title">' + esc(note.title) + '</div>',
+          conflictBadge,
+          '<span class="note-type-badge ' + esc(note.type) + '">' + esc(note.type) + '</span>',
+          '<span style="font-size:11px;color:var(--ink-dim);flex-shrink:0">💡' + cardCount + '</span>',
+          '<span class="note-expand-icon" id="nei-' + esc(note.id) + '">▸</span>',
+        '</div>',
+        '<div class="note-card-body" id="nb-' + esc(note.id) + '">',
+          '<div class="note-edit-grid">',
+            '<div class="note-edit-full"><label class="lbl">Pfad (Struktur-ID · Dateiname ohne .md)</label>',
+            '<input class="field mono" data-nid="' + esc(note.id) + '" data-field="path" value="' + esc(note.path) + '" /></div>',
+            '<div><label class="lbl">Titel</label><input class="field" data-nid="' + esc(note.id) + '" data-field="title" value="' + esc(note.title) + '" /></div>',
+            '<div><label class="lbl">Typ</label>',
+              '<select class="sel" data-nid="' + esc(note.id) + '" data-field="type">',
+                ['concept','process','reference','example'].map(function(t) {
+                  return '<option value="' + t + '"' + (note.type === t ? ' selected' : '') + '>' + t + '</option>';
+                }).join(''),
+              '</select></div>',
+            '<div class="note-edit-full"><label class="lbl">Beschreibung (für MOC)</label>',
+            '<input class="field" data-nid="' + esc(note.id) + '" data-field="desc" value="' + esc(note.desc) + '" /></div>',
+            '<div class="note-edit-full"><label class="lbl">Tags (kommagetrennt)</label>',
+            '<input class="field" data-nid="' + esc(note.id) + '" data-field="tags" value="' + esc(note.tags.join(', ')) + '" /></div>',
+          '</div>',
+          '<label class="lbl">Body (Markdown)</label>',
+          '<textarea class="area" rows="5" data-nid="' + esc(note.id) + '" data-field="body">' + esc(note.body) + '</textarea>',
+          renderFlashcardEditor(note),
+          '<div style="display:flex;gap:8px;margin-top:12px">',
+            '<button class="btn btn-ghost btn-sm" data-delete-nid="' + esc(note.id) + '">🗑 Notiz löschen</button>',
+          '</div>',
+        '</div>',
+      '</div>'
+    ].join('');
+  }).join('');
+}
+
+function renderExport() {
+  var el = document.getElementById('exportItems');
+  var n = S.notes.length;
+  if (!n) { el.innerHTML = '<div class="notice blue">Notizen erstellen (Schritt 3–4), um den Export vorzubereiten.</div>'; return; }
+  var cards = S.notes.reduce(function(a, note) { return a + (note.flashcards ? note.flashcards.length : 0); }, 0);
+  var mcCards   = countCards('mc');
+  var tapCards  = countCards('tapping');
+  var clozeCards= countCards('cloze');
+  el.innerHTML = [
+    exportItem('📝', n + ' Markdown-Datei' + (n !== 1 ? 'en' : ''), 'Je Notiz eine .md-Datei, Dateiname = Pfad + .md', n),
+    exportItem('🗺', 'MOC.md', 'Inhaltsverzeichnis mit Wikilinks und Beschreibungen', n),
+    cards ? exportItem('🧠', 'Anki-CSVs', 'MC: ' + mcCards + ' · Tapping: ' + tapCards + ' · Cloze: ' + clozeCards, cards) : ''
+  ].join('');
+}
+
+function countCards(type) {
+  return S.notes.reduce(function(a, n) {
+    return a + (n.flashcards || []).filter(function(c) { return c.cardType === type; }).length;
+  }, 0);
+}
+
+function exportItem(icon, name, desc, count) {
+  return '<div class="export-item">' +
+    '<div class="export-icon">' + icon + '</div>' +
+    '<div class="export-info"><div class="export-name">' + esc(name) + '</div><div class="export-desc">' + esc(desc) + '</div></div>' +
+    '<div class="export-count">' + count + '</div></div>';
+}
+
+function renderNavBadges() {
+  updateNavItem(1, S.sourceFiles.length > 0, S.sourceFiles.length + ' Datei' + (S.sourceFiles.length !== 1 ? 'en' : ''));
+  var mocOk = S.mocIndex.entries.length > 0 || S.mocIndex.bootstrapMode;
+  updateNavItem(2, mocOk, S.mocIndex.bootstrapMode ? 'Bootstrap' : S.mocIndex.entries.length + ' Einträge');
+  updateNavItem(3, !!S.analysisPrompt && S.notes.length > 0, S.notes.length ? 'Prompt & JSON OK' : S.analysisPrompt ? 'Prompt bereit' : '');
+  updateNavItem(4, S.notes.length > 0, S.notes.length + ' Notiz' + (S.notes.length !== 1 ? 'en' : ''));
+  updateNavItem(5, false, '');
+}
+
+function updateNavItem(num, done, sub) {
+  var item = document.getElementById('nav' + num);
+  var subEl = document.getElementById('nav' + num + '-sub');
+  if (!item) return;
+  item.className = 'step-nav-item' + (done ? ' done-step' : '');
+  var numEl = item.querySelector('.step-num');
+  if (numEl) numEl.textContent = done ? '✓' : num;
+  if (subEl && sub) subEl.textContent = sub;
+}
+
+// ════════════════════════════════════════════════
+// EXPORT FUNCTIONS
+// ════════════════════════════════════════════════
+function buildFrontmatter(note) {
+  var fm = ['---'];
+  fm.push('title: ' + note.title);
+  fm.push('desc: ' + note.desc);
+  fm.push('type: ' + note.type);
+  if (note.tags.length) fm.push('tags: [' + note.tags.join(', ') + ']');
+  fm.push('created: ' + nowDate());
+  fm.push('---');
+  return fm.join('\n');
+}
+
+function buildMarkdownFile(note) {
+  return buildFrontmatter(note) + '\n\n' + (note.body || '# ' + note.title + '\n\n');
+}
+
+function buildMocMd() {
+  var lines = ['# MOC — Inhaltsverzeichnis', '', '> Generiert: ' + nowDate(), ''];
+  var byRoot = {};
+  S.notes.forEach(function(n) {
+    var root = n.path.split('.')[0] || 'Sonstige';
+    byRoot[root] = byRoot[root] || [];
+    byRoot[root].push(n);
+  });
+  Object.keys(byRoot).sort().forEach(function(root) {
+    lines.push('## ' + root);
+    byRoot[root].forEach(function(n) {
+      lines.push('- [[' + n.path + ']] — ' + n.desc);
+    });
+    lines.push('');
+  });
+  return lines.join('\n');
+}
+
+function buildAnkiCsv(cardType) {
+  var BOM = '\uFEFF';
+  var rows;
+  if (cardType === 'mc') {
+    rows = [['Learnable', 'Definition', 'Audio', 'Mems', 'Attributes', 'Extra', 'Extra 2', 'Choices']];
+  } else if (cardType === 'tapping') {
+    rows = [['Learnable Sentence', 'Definition', 'Audio', 'Mems', 'Attributes', 'Extra', 'Extra 2', 'Choices']];
+  } else {
+    rows = [['Text', 'Audio', 'Mems', 'Attributes', 'Extra', 'Extra 2', 'Choices']];
+  }
+  S.notes.forEach(function(note) {
+    (note.flashcards || []).filter(function(c) { return c.cardType === cardType; }).forEach(function(c) {
+      var choices = (c.choices || []).join(' | ');
+      var ext = (c.extra || '').replace(/;/g, '–').replace(/\n/g, '<br>');
+      if (cardType === 'mc') {
+        rows.push([c.learnable, c.definition, '', '', '', ext, '', choices].map(function(v) { return v || ''; }));
+      } else if (cardType === 'tapping') {
+        rows.push([c.learnable, c.definition, '', '', '', ext, '', ''].map(function(v) { return v || ''; }));
+      } else {
+        rows.push([c.learnable, '', '', '', ext, '', choices].map(function(v) { return v || ''; }));
+      }
+    });
+  });
+  return BOM + rows.map(function(r) { return r.join(';'); }).join('\r\n');
+}
+
+function exportAllZip() {
+  if (!S.notes.length) { alert('Keine Notizen zum Exportieren.'); return; }
+  var zip = new JSZip();
+  var folder = zip.folder('notizen');
+  S.notes.forEach(function(note) {
+    var filename = (note.path || 'untitled').replace(/\./g, '/') + '.md';
+    folder.file(filename, buildMarkdownFile(note));
+  });
+  zip.file('MOC.md', buildMocMd());
+  var ankiFolder = zip.folder('anki');
+  ['mc', 'tapping', 'cloze'].forEach(function(type) {
+    if (countCards(type) > 0) {
+      ankiFolder.file('anki_' + type + '.csv', buildAnkiCsv(type));
+    }
+  });
+  zip.generateAsync({ type: 'blob' }).then(function(blob) {
+    downloadBlob(blob, 'zettelkasten-export-' + nowDate() + '.zip');
+    log('ZIP exportiert: ' + S.notes.length + ' Notizen', 'success');
+  });
+}
+
+function exportMdOnly() {
+  if (!S.notes.length) { alert('Keine Notizen.'); return; }
+  var zip = new JSZip();
+  S.notes.forEach(function(note) {
+    var filename = (note.path || 'untitled').replace(/\./g, '/') + '.md';
+    zip.file(filename, buildMarkdownFile(note));
+  });
+  zip.generateAsync({ type: 'blob' }).then(function(blob) {
+    downloadBlob(blob, 'markdown-' + nowDate() + '.zip');
+  });
+}
+
+function exportMocOnly() {
+  if (!S.notes.length) { alert('Keine Notizen.'); return; }
+  var blob = new Blob([buildMocMd()], { type: 'text/markdown;charset=utf-8' });
+  downloadBlob(blob, 'MOC-' + nowDate() + '.md');
+}
+
+function exportAnkiOnly() {
+  if (!countCards('mc') && !countCards('tapping') && !countCards('cloze')) { alert('Keine Flashcards.'); return; }
+  var zip = new JSZip();
+  ['mc', 'tapping', 'cloze'].forEach(function(type) {
+    if (countCards(type) > 0) zip.file('anki_' + type + '.csv', buildAnkiCsv(type));
+  });
+  zip.generateAsync({ type: 'blob' }).then(function(blob) {
+    downloadBlob(blob, 'anki-' + nowDate() + '.zip');
+    log('Anki-CSVs exportiert', 'success');
+  });
+}
+
+function downloadBlob(blob, name) {
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+}
+
+// ════════════════════════════════════════════════
+// OBSIDIAN DIRECT EXPORT
+// ════════════════════════════════════════════════
+function obsidianLog(msg, kind) {
+  var el = document.getElementById('obsidianLogList');
+  if (!el) return;
+  var item = document.createElement('div');
+  item.className = 'log-item ' + (kind || 'info');
+  item.innerHTML = '<div class="log-time">' + new Date().toLocaleTimeString('de-DE') + '</div><div class="log-msg">' + esc(msg) + '</div>';
+  el.prepend(item);
+}
+
+async function exportToObsidian() {
+  if (!S.notes.length) { alert('Keine Notizen zum Exportieren.'); return; }
+  var baseUrl = (S.config.obsidianUrl || 'http://127.0.0.1:27124').replace(/\/$/, '');
+  var obsToken = localStorage.getItem('zettelkasten_obsidian_token') || '';
+  var folder   = (document.getElementById('obsidianVaultFolder').value.trim()).replace(/^\/|\/$/g, '');
+
+  document.getElementById('obsidianLog').style.display = '';
+  document.getElementById('obsidianLogList').innerHTML = '';
+
+  var headers = { 'Content-Type': 'text/markdown' };
+  if (obsToken) headers['Authorization'] = 'Bearer ' + obsToken;
+
+  var ok = 0; var fail = 0;
+  for (var i = 0; i < S.notes.length; i++) {
+    var note = S.notes[i];
+    var relativePath = note.path.replace(/\./g, '/') + '.md';
+    var fullPath = folder ? folder + '/' + relativePath : relativePath;
+    var url = baseUrl + '/vault/' + encodeURIComponent(fullPath).replace(/%2F/g, '/');
+    try {
+      var res = await fetch(url, { method: 'PUT', headers: headers, body: buildMarkdownFile(note) });
+      if (res.ok || res.status === 204) {
+        ok++;
+        obsidianLog('✓ ' + fullPath, 'success');
+      } else {
+        fail++;
+        obsidianLog('✕ ' + fullPath + ' (HTTP ' + res.status + ')', 'error');
+      }
+    } catch(e) {
+      fail++;
+      obsidianLog('✕ ' + fullPath + ' — ' + e.message, 'error');
+    }
+  }
+  // Also push MOC.md
+  var mocPath = (folder ? folder + '/' : '') + 'MOC.md';
+  var mocUrl  = baseUrl + '/vault/' + encodeURIComponent(mocPath).replace(/%2F/g, '/');
+  try {
+    var res2 = await fetch(mocUrl, { method: 'PUT', headers: headers, body: buildMocMd() });
+    if (res2.ok || res2.status === 204) obsidianLog('✓ MOC.md', 'success');
+    else obsidianLog('✕ MOC.md (HTTP ' + res2.status + ')', 'error');
+  } catch(e) { obsidianLog('✕ MOC.md — ' + e.message, 'error'); }
+
+  log('Obsidian-Export: ' + ok + ' OK, ' + fail + ' Fehler', fail ? 'error' : 'success');
+}
+
+// ════════════════════════════════════════════════
+// NOTE EDITING
+// ════════════════════════════════════════════════
+function getNoteById(id) {
+  return S.notes.find(function(n) { return n.id === id; });
+}
+
+function updateFlashcardField(nid, fcid, field, value) {
+  var note = getNoteById(nid);
+  if (!note) return;
+  var fc = (note.flashcards || []).find(function(c) { return c.id === fcid; });
+  if (!fc) return;
+  if (field === 'choices') {
+    fc.choices = value.split('|').map(function(s) { return s.trim(); }).filter(Boolean);
+  } else {
+    fc[field] = value;
+  }
+  note.updatedAt = nowIso();
+  // Update preview text in header without full re-render
+  var preview = document.querySelector('#fcc-' + fcid + ' .fc-card-preview');
+  if (preview && field === 'learnable') preview.textContent = value.slice(0, 50) + (value.length > 50 ? '…' : '');
+  queueSave();
+  renderKpis();
+}
+
+function updateNoteField(id, field, value) {
+  var note = getNoteById(id);
+  if (!note) return;
+  if (field === 'tags') {
+    note.tags = value.split(',').map(function(t) { return t.trim(); }).filter(Boolean);
+  } else {
+    note[field] = value;
+  }
+  note.updatedAt = nowIso();
+  queueSave();
+  renderKpis();
+  renderNavBadges();
+}
+
+function deleteNote(id) {
+  S.notes = S.notes.filter(function(n) { return n.id !== id; });
+  log('Notiz gelöscht', 'info');
+  queueSave();
+  renderAll();
+}
+
+function applyBranchRename(oldPfx, newPfx) {
+  if (!oldPfx || !newPfx) return;
+  var count = 0;
+  S.notes.forEach(function(note) {
+    if (note.path === oldPfx || note.path.startsWith(oldPfx + '.')) {
+      note.path = newPfx + note.path.slice(oldPfx.length);
+      note.updatedAt = nowIso();
+      count++;
+    }
+  });
+  log('Zweig umbenannt: ' + count + ' Notizen aktualisiert (' + oldPfx + ' → ' + newPfx + ')', 'success');
+  queueSave();
+  renderAll();
+}
+
+// ════════════════════════════════════════════════
+// EVENTS
+// ════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', function() {
+  loadState();
+  applyConfig();
+  renderAll();
+  bindEvents();
+});
+
+function applyConfig() {
+  document.getElementById('cfgPrefix').value      = S.config.prefix      || '';
+  document.getElementById('cfgAnkiDeck').value    = S.config.ankiDeck    || 'Default';
+  document.getElementById('cfgObsidianUrl').value = S.config.obsidianUrl || '';
+  var tokenEl = document.getElementById('cfgObsidianToken');
+  if (tokenEl) tokenEl.value = localStorage.getItem('zettelkasten_obsidian_token') || '';
+  var folderEl = document.getElementById('obsidianVaultFolder');
+  if (folderEl) folderEl.value = S.config.obsidianVaultFolder || '';
+}
+
+function bindEvents() {
+
+  // ── File pick & drop ──
+  var dz = document.getElementById('dropzone');
+  var fi = document.getElementById('fileInput');
+  document.getElementById('btnFilePick').onclick = function() { fi.click(); };
+  fi.onchange = function() { if (fi.files.length) addFiles(fi.files); fi.value = ''; };
+  dz.onclick = function() { fi.click(); };
+  dz.ondragover = function(e) { e.preventDefault(); dz.classList.add('over'); };
+  dz.ondragleave = function() { dz.classList.remove('over'); };
+  dz.ondrop = function(e) { e.preventDefault(); dz.classList.remove('over'); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); };
+
+  // ── Paste text ──
+  document.getElementById('btnPasteText').onclick = function() {
+    var pa = document.getElementById('pasteArea');
+    pa.style.display = pa.style.display === 'none' ? '' : 'none';
+  };
+  document.getElementById('btnAddPaste').onclick = function() {
+    var text = document.getElementById('pasteText').value.trim();
+    if (!text) return;
+    S.sourceFiles.push({ id: uid(), name: 'text-einfügung-' + nowDate() + '.txt', type: 'text/plain', chars: text.length, content: text });
+    document.getElementById('pasteText').value = '';
+    document.getElementById('pasteArea').style.display = 'none';
+    log('Text als Datei übernommen (' + fmtChars(text.length) + ' Z.)', 'success');
+    queueSave(); renderAll();
+  };
+
+  // ── File list: remove ──
+  document.getElementById('fileList').addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-fid]');
+    if (!btn) return;
+    S.sourceFiles = S.sourceFiles.filter(function(f) { return f.id !== btn.dataset.fid; });
+    queueSave(); renderAll();
+  });
+
+  // ── MOC ──
+  var mi = document.getElementById('mocInput');
+  document.getElementById('btnMocPick').onclick = function() { mi.click(); };
+  mi.onchange = function() {
+    if (!mi.files[0]) return;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var entries = parseMoc(e.target.result);
+      S.mocIndex = { loadedAt: nowIso(), sourceName: mi.files[0].name, entries: entries, bootstrapMode: false };
+      log('MOC geladen: ' + entries.length + ' Einträge aus "' + mi.files[0].name + '"', 'success');
+      mi.value = '';
+      queueSave(); renderAll();
+    };
+    reader.readAsText(mi.files[0], 'UTF-8');
+  };
+  document.getElementById('btnBootstrap').onclick = function() {
+    S.mocIndex = { loadedAt: nowIso(), sourceName: '', entries: [], bootstrapMode: true };
+    log('Bootstrap-Modus aktiviert', 'info');
+    queueSave(); renderAll();
+  };
+  document.getElementById('btnMocClear').onclick = function() {
+    S.mocIndex = defaults().mocIndex;
+    queueSave(); renderAll();
+  };
+
+  // ── Denoising ──
+  var denoiseCheck = document.getElementById('denoiseCheck');
+  var denoisePanel = document.getElementById('denoisePanel');
+  var denoiseToggle = document.getElementById('denoiseToggle');
+  denoiseCheck.checked = S.denoise.active;
+  if (S.denoise.active) { denoisePanel.classList.add('open'); denoiseToggle.classList.add('active'); }
+  document.getElementById('denoisePromptBox').textContent = S.denoise.prompt;
+  document.getElementById('denoiseResult').value = S.denoise.result || '';
+  denoiseCheck.addEventListener('change', function() {
+    S.denoise.active = denoiseCheck.checked;
+    denoisePanel.classList.toggle('open', S.denoise.active);
+    denoiseToggle.classList.toggle('active', S.denoise.active);
+    queueSave();
+  });
+  document.getElementById('btnCopyDenoisePrompt').onclick = function() {
+    var fullPrompt = S.denoise.prompt + '\n\n## MATERIAL\n\n' + S.sourceFiles.map(function(f){ return f.content; }).join('\n\n---\n\n');
+    navigator.clipboard.writeText(fullPrompt).then(function() {
+      var btn = document.getElementById('btnCopyDenoisePrompt');
+      btn.textContent = '✓ Kopiert!';
+      setTimeout(function() { btn.textContent = '📋 Denoise-Prompt kopieren'; }, 2000);
+    });
+  };
+  document.getElementById('denoiseResult').addEventListener('input', function() {
+    S.denoise.result = this.value;
+    queueSave();
+  });
+
+  // ── Prompt ──
+  document.getElementById('btnGenPrompt').onclick = function() {
+    if (!S.sourceFiles.length) { alert('Zuerst Material laden (Schritt 1).'); return; }
+    if (S.denoise.active && S.denoise.result.trim()) log('Denoise-Ergebnis als Materialquelle verwendet', 'info');
+    S.analysisPrompt = buildAnalysisPrompt();
+    log('Analyse-Prompt erzeugt', 'success');
+    queueSave(); renderAll();
+  };
+  document.getElementById('btnCopyPrompt').onclick = function() {
+    navigator.clipboard.writeText(S.analysisPrompt).then(function() {
+      var btn = document.getElementById('btnCopyPrompt');
+      btn.textContent = '✓ Kopiert!';
+      setTimeout(function() { btn.textContent = '📋 Prompt kopieren'; }, 2000);
+      log('Prompt in Zwischenablage kopiert', 'info');
+    });
+  };
+  document.getElementById('btnRegenPrompt').onclick = function() {
+    S.analysisPrompt = buildAnalysisPrompt();
+    queueSave(); renderAll();
+  };
+
+  // ── KI parse ──
+  document.getElementById('btnParseKi').onclick = function() {
+    var raw = document.getElementById('kiResponseArea').value.trim();
+    if (!raw) { alert('Bitte zuerst die KI-Antwort einfügen.'); return; }
+    var statusEl = document.getElementById('parseStatus');
+    try {
+      var notes = parseKiResponse(raw);
+      S.rawKiResponse = raw;
+      S.notes = notes;
+      statusEl.textContent = '✓ ' + notes.length + ' Notizen geladen, ' + notes.reduce(function(a,n){return a+n.flashcards.length;},0) + ' Flashcards';
+      statusEl.style.color = 'var(--teal)';
+      log('KI-JSON geparst: ' + notes.length + ' Notizen', 'success');
+      queueSave(); renderAll();
+    } catch(e) {
+      statusEl.textContent = '✕ ' + e.message;
+      statusEl.style.color = 'var(--red)';
+      log('Parse-Fehler: ' + e.message, 'error');
+    }
+  };
+
+  // ── Note editor: expand/collapse ──
+  document.getElementById('noteCards').addEventListener('click', function(e) {
+    // Flashcard header toggle
+    var fcHdr = e.target.closest('[data-fcid][data-nid]:not([data-fcfield]):not([data-delfcid])');
+    if (fcHdr && fcHdr.classList.contains('fc-card-header')) {
+      var body = document.getElementById('fcb-' + fcHdr.dataset.fcid);
+      if (body) body.classList.toggle('open');
+      return;
+    }
+    // Flashcard delete
+    var del = e.target.closest('[data-delfcid]');
+    if (del) {
+      var note = getNoteById(del.dataset.nid);
+      if (note) {
+        note.flashcards = note.flashcards.filter(function(c) { return c.id !== del.dataset.delfcid; });
+        note.updatedAt = nowIso();
+        queueSave(); renderAll();
+      }
+      return;
+    }
+    // Add flashcard
+    var addBtn = e.target.closest('[data-addfcnid]');
+    if (addBtn) {
+      var note = getNoteById(addBtn.dataset.addfcnid);
+      if (note) {
+        note.flashcards = note.flashcards || [];
+        var fc = makeFlashcard({ cardType: 'mc' });
+        note.flashcards.push(fc);
+        note.updatedAt = nowIso();
+        queueSave(); renderAll();
+        setTimeout(function() {
+          var body = document.getElementById('fcb-' + fc.id);
+          if (body) body.classList.add('open');
+        }, 50);
+      }
+      return;
+    }
+    // Note card header expand/collapse
+    var hdr = e.target.closest('[data-nid]');
+    if (hdr && hdr.classList.contains('note-card-header')) {
+      var id = hdr.dataset.nid;
+      var body = document.getElementById('nb-' + id);
+      var icon = document.getElementById('nei-' + id);
+      if (body) { body.classList.toggle('open'); if (icon) icon.classList.toggle('open'); }
+      return;
+    }
+    var delNote = e.target.closest('[data-delete-nid]');
+    if (delNote) { if (confirm('Notiz löschen?')) deleteNote(delNote.dataset.deleteNid); }
+  });
+
+  // ── Note editor: field changes ──
+  document.getElementById('noteCards').addEventListener('change', function(e) {
+    var el = e.target;
+    if (el.dataset.fcfield && el.dataset.fcid && el.dataset.nid) {
+      updateFlashcardField(el.dataset.nid, el.dataset.fcid, el.dataset.fcfield, el.value);
+    } else if (el.dataset.nid && el.dataset.field) {
+      updateNoteField(el.dataset.nid, el.dataset.field, el.value);
+    }
+  });
+  document.getElementById('noteCards').addEventListener('input', function(e) {
+    var el = e.target;
+    if (el.dataset.fcfield && el.dataset.fcid && el.dataset.nid) {
+      updateFlashcardField(el.dataset.nid, el.dataset.fcid, el.dataset.fcfield, el.value);
+    } else if (el.dataset.nid && el.dataset.field) {
+      updateNoteField(el.dataset.nid, el.dataset.field, el.value);
+    }
+  });
+
+  // ── Add note ──
+  document.getElementById('btnAddNote').onclick = function() {
+    var prefix = S.config.prefix ? S.config.prefix + '.neue-notiz' : 'neue.notiz';
+    var note = makeNote({ path: prefix, title: 'Neue Notiz', desc: '', type: 'concept' });
+    S.notes.push(note);
+    log('Leere Notiz hinzugefügt', 'info');
+    queueSave(); renderAll();
+    setTimeout(function() {
+      var card = document.getElementById('nc-' + note.id);
+      if (card) { var hdr = card.querySelector('.note-card-header'); if (hdr) hdr.click(); }
+    }, 50);
+  };
+
+  // ── Branch rename ──
+  document.getElementById('btnBranchRename').onclick = function() {
+    var box = document.getElementById('branchRenameBox');
+    box.style.display = box.style.display === 'none' ? '' : 'none';
+  };
+  document.getElementById('btnBranchCancel').onclick = function() {
+    document.getElementById('branchRenameBox').style.display = 'none';
+  };
+  document.getElementById('btnBranchApply').onclick = function() {
+    var oldVal = document.getElementById('branchOld').value.trim();
+    var newVal = document.getElementById('branchNew').value.trim();
+    if (!oldVal || !newVal) { alert('Bitte beide Felder ausfüllen.'); return; }
+    applyBranchRename(oldVal, newVal);
+    document.getElementById('branchRenameBox').style.display = 'none';
+    document.getElementById('branchOld').value = '';
+    document.getElementById('branchNew').value = '';
+  };
+
+  // ── Export ──
+  document.getElementById('btnExportAll').onclick   = exportAllZip;
+  document.getElementById('btnExportMd').onclick    = exportMdOnly;
+  document.getElementById('btnExportMoc').onclick   = exportMocOnly;
+  document.getElementById('btnExportAnki').onclick  = exportAnkiOnly;
+  document.getElementById('btnObsidianExport').onclick = function() { exportToObsidian(); };
+
+  // Restore vault folder from config
+  var savedFolder = S.config.obsidianVaultFolder || '';
+  document.getElementById('obsidianVaultFolder').value = savedFolder;
+  document.getElementById('obsidianVaultFolder').addEventListener('input', function() {
+    S.config.obsidianVaultFolder = this.value.trim();
+    queueSave();
+  });
+
+  // ── Backup / clear / restore ──
+  var restoreInput = document.createElement('input');
+  restoreInput.type = 'file'; restoreInput.accept = '.json,application/json'; restoreInput.style.display = 'none';
+  document.body.appendChild(restoreInput);
+
+  document.getElementById('btnBackup').onclick = function() {
+    var blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' });
+    downloadBlob(blob, 'workspace-' + nowDate() + '.json');
+    log('Workspace gesichert', 'success');
+  };
+  document.getElementById('btnRestore').onclick = function() { restoreInput.click(); };
+  restoreInput.onchange = function() {
+    if (!restoreInput.files[0]) return;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        var parsed = JSON.parse(e.target.result);
+        if (!parsed || typeof parsed !== 'object') throw new Error('Ungültiges JSON');
+        S = Object.assign(defaults(), parsed);
+        S.notes = (S.notes || []).map(makeNote);
+        S.notes.forEach(function(n) { n.flashcards = (n.flashcards||[]).map(makeFlashcard); });
+        if (S.mocIndex && S.mocIndex.entries) S.mocIndex.entries = S.mocIndex.entries.map(makeMocEntry);
+        else S.mocIndex = defaults().mocIndex;
+        S.config  = Object.assign(defaults().config,  S.config  || {});
+        S.denoise = Object.assign(defaults().denoise, S.denoise || {});
+        S.logs = S.logs || [];
+        persist();
+        applyConfig();
+        // Restore denoise UI state
+        var dc = document.getElementById('denoiseCheck');
+        var dp = document.getElementById('denoisePanel');
+        var dt = document.getElementById('denoiseToggle');
+        if (dc) dc.checked = S.denoise.active;
+        if (dp) dp.classList.toggle('open', S.denoise.active);
+        if (dt) dt.classList.toggle('active', S.denoise.active);
+        var drBox = document.getElementById('denoiseResult');
+        if (drBox) drBox.value = S.denoise.result || '';
+        var dpBox = document.getElementById('denoisePromptBox');
+        if (dpBox) dpBox.textContent = S.denoise.prompt;
+        renderAll();
+        log('Workspace aus Datei geladen: ' + S.notes.length + ' Notizen', 'success');
+      } catch(err) {
+        alert('Fehler beim Laden: ' + err.message);
+      }
+      restoreInput.value = '';
+    };
+    reader.readAsText(restoreInput.files[0], 'UTF-8');
+  };
+  document.getElementById('btnClear').onclick = function() {
+    if (!confirm('Gesamten Workspace leeren? Alle Notizen und Dateien werden entfernt.')) return;
+    S = defaults();
+    localStorage.removeItem(LKEY);
+    applyConfig();
+    renderAll();
+    log('Workspace geleert', 'warn');
+  };
+
+  // ── Config ──
+  document.getElementById('configToggle').onclick = function() {
+    var p = document.getElementById('configPanel');
+    var c = document.getElementById('configCaret');
+    var open = p.style.display !== 'none';
+    p.style.display = open ? 'none' : '';
+    c.textContent = open ? '▸' : '▾';
+  };
+  ['cfgPrefix', 'cfgAnkiDeck', 'cfgObsidianUrl', 'cfgObsidianToken'].forEach(function(id) {
+    document.getElementById(id).addEventListener('input', function() {
+      S.config.prefix      = document.getElementById('cfgPrefix').value.trim();
+      S.config.ankiDeck    = document.getElementById('cfgAnkiDeck').value.trim();
+      S.config.obsidianUrl = document.getElementById('cfgObsidianUrl').value.trim();
+      // Token stored separately (not in workspace backup)
+      localStorage.setItem('zettelkasten_obsidian_token', document.getElementById('cfgObsidianToken').value.trim());
+      queueSave();
+    });
+  });
+
+  // ── Active nav on scroll ──
+  var sections = [1,2,3,4,5].map(function(n) { return document.getElementById('s' + n); });
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        var id = entry.target.id;
+        document.querySelectorAll('.step-nav-item').forEach(function(a) { a.classList.remove('active'); });
+        var link = document.querySelector('.step-nav-item[href="#' + id + '"]');
+        if (link) link.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px' });
+  sections.forEach(function(s) { if (s) observer.observe(s); });
+}
+</script>
+</body>
+</html>
