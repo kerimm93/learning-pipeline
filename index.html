@@ -2483,6 +2483,10 @@
       return String(value == null ? '' : value).replace(/"/g, '\\"');
     }
 
+    function yamlEscape(value) {
+      return yamlEscapeString(value);
+    }
+
     function buildExportNoteMarkdown(note) {
       var normalizedNote = normalizeGeneratedNote(note);
       var title = normalizeWhitespace(normalizedNote.title || 'Untitled Note');
@@ -2507,6 +2511,72 @@
       return frontmatter + body + '\n';
     }
 
+    function buildZettelkastenNoteMarkdown(note) {
+      var normalizedNote = makeNote(note);
+      var title = normalizeWhitespace(normalizedNote.title || 'Untitled Note');
+      var desc = normalizeWhitespace(normalizedNote.desc || '');
+      var type = normalizeWhitespace(normalizedNote.type || 'concept') || 'concept';
+      var created = normalizedNote.createdAt || nowIso();
+      var updated = normalizedNote.updatedAt || nowIso();
+      var tags = Array.isArray(normalizedNote.tags) ? normalizedNote.tags : [];
+      var body = String(normalizedNote.body == null ? '' : normalizedNote.body).trim();
+      if (!/^#\s+/m.test(body)) {
+        body = '# ' + title + (body ? '\n\n' + body : '');
+      }
+
+      var lines = [
+        '---',
+        'title: "' + yamlEscape(title) + '"',
+        'desc: "' + yamlEscape(desc) + '"',
+        'type: "' + yamlEscape(type) + '"',
+        'tags:'
+      ];
+      if (tags.length) {
+        tags.forEach(function(tag) {
+          lines.push('  - ' + yamlEscape(normalizeWhitespace(tag)));
+        });
+      } else {
+        lines.push('  -');
+      }
+      lines.push('created: "' + yamlEscape(created) + '"');
+      lines.push('updated: "' + yamlEscape(updated) + '"');
+      lines.push('---');
+      lines.push('');
+      lines.push(body);
+      lines.push('');
+      return lines.join('\n');
+    }
+
+    function buildZettelkastenMocMarkdown(notes) {
+      var source = Array.isArray(notes) ? notes : (Array.isArray(S.notes) ? S.notes : []);
+      var normalized = source.map(function(note) { return makeNote(note); });
+      var lines = ['# MOC', ''];
+      var groups = {};
+      normalized.forEach(function(note) {
+        var path = normalizeDots(String(note.path || '').trim());
+        if (!path) return;
+        var group = path.split('.')[0] || 'misc';
+        if (!groups[group]) groups[group] = [];
+        groups[group].push(note);
+      });
+
+      Object.keys(groups).sort().forEach(function(group) {
+        lines.push('## ' + group);
+        lines.push('');
+        groups[group].sort(function(a, b) {
+          return String(a.path || '').localeCompare(String(b.path || ''));
+        }).forEach(function(note) {
+          var path = normalizeDots(String(note.path || '').trim());
+          if (!path) return;
+          lines.push('- [[' + path + ']]');
+          lines.push('  - ' + normalizeWhitespace(note.desc || ''));
+        });
+        lines.push('');
+      });
+
+      return lines.join('\n');
+    }
+
     function collectAllFlashcards(notes) {
       var cards = [];
       notes.forEach(function(note) {
@@ -2519,12 +2589,91 @@
       return cards;
     }
 
+    function collectZettelkastenFlashcards(notes) {
+      var source = Array.isArray(notes) ? notes : (Array.isArray(S.notes) ? S.notes : []);
+      var cards = [];
+      source.forEach(function(note) {
+        var normalizedNote = makeNote(note);
+        (normalizedNote.flashcards || []).forEach(function(card) {
+          var normalizedCard = makeFlashcard(card);
+          cards.push({
+            cardType: normalizedCard.cardType,
+            learnable: normalizedCard.learnable,
+            definition: normalizedCard.definition,
+            choices: Array.isArray(normalizedCard.choices) ? normalizedCard.choices.slice() : [],
+            extra: normalizedCard.extra
+          });
+        });
+      });
+      return cards;
+    }
+
     function csvEscape(value) {
       var text = String(value == null ? '' : value).replace(/\r?\n/g, '\n');
       if (/[",\n]/.test(text)) {
         return '"' + text.replace(/"/g, '""') + '"';
       }
       return text;
+    }
+
+    function buildZettelkastenAnkiCsv(cardType, notes) {
+      var type = String(cardType || '').trim().toLowerCase();
+      var cards = collectZettelkastenFlashcards(notes).filter(function(card) {
+        return card.cardType === type;
+      });
+      if (!cards.length) return '';
+
+      var headerByType = {
+        mc: ['Learnable', 'Definition', 'Choices', 'Extra'],
+        tapping: ['Learnable', 'Definition', 'Choices', 'Extra'],
+        cloze: ['Learnable', 'Definition', 'Choices', 'Extra']
+      };
+      var header = headerByType[type];
+      if (!header) return '';
+
+      var lines = [header.join(',')];
+      cards.forEach(function(card) {
+        var choicesText = Array.isArray(card.choices) ? card.choices.join(' | ') : '';
+        lines.push([
+          csvEscape(card.learnable),
+          csvEscape(card.definition),
+          csvEscape(choicesText),
+          csvEscape(card.extra)
+        ].join(','));
+      });
+      return lines.join('\n') + '\n';
+    }
+
+    async function buildZettelkastenExportZip() {
+      if (!window.JSZip) {
+        throw new Error('JSZip ist nicht verfügbar.');
+      }
+      var notes = (Array.isArray(S.notes) ? S.notes : []).map(function(note) {
+        return makeNote(note);
+      });
+      var zip = new JSZip();
+
+      notes.forEach(function(note) {
+        var path = normalizeDots(String(note.path || '').trim());
+        // Punkte bleiben absichtlich erhalten, weil path die Structured-Tree-ID ist.
+        var filename = (path || 'note') + '.md';
+        zip.file(filename, buildZettelkastenNoteMarkdown(note));
+      });
+
+      zip.file('MOC.md', buildZettelkastenMocMarkdown(notes));
+
+      ['mc', 'tapping', 'cloze'].forEach(function(type) {
+        var csv = buildZettelkastenAnkiCsv(type, notes);
+        if (csv) {
+          zip.file('anki-' + type + '.csv', csv);
+        }
+      });
+
+      return {
+        blob: await zip.generateAsync({ type: 'blob' }),
+        noteCount: notes.length,
+        flashcardCount: collectZettelkastenFlashcards(notes).length
+      };
     }
 
     async function buildNotesBundleZip() {
