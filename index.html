@@ -640,6 +640,7 @@
         sopText: '',
         generatedNotes: [],
         notes: [],
+        rawKiResponse: '',
         structuredNotes: {
           importedAt: '',
           sourceName: '',
@@ -851,6 +852,77 @@
       }
     }
 
+    function stripJsonCodeFence(raw) {
+      var text = String(raw == null ? '' : raw).trim();
+      var fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+      return fenced ? fenced[1].trim() : text;
+    }
+
+    function parseZettelkastenResponse(raw) {
+      var cleaned = stripJsonCodeFence(raw);
+      if (!cleaned) {
+        throw new Error('KI-Antwort ist leer oder enthält kein JSON.');
+      }
+      var parsed;
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch (e) {
+        throw new Error('KI-Antwort enthält ungültiges JSON: ' + e.message);
+      }
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('KI-Antwort ist ungültig: Erwartet wurde ein JSON-Objekt.');
+      }
+      if (!Array.isArray(parsed.notes)) {
+        throw new Error('KI-Antwort ist ungültig: "notes" muss ein Array sein.');
+      }
+
+      var normalizedNotes = parsed.notes.map(function(note, index) {
+        if (!note || typeof note !== 'object' || Array.isArray(note)) {
+          throw new Error('KI-Antwort ist ungültig: notes[' + index + '] muss ein Objekt sein.');
+        }
+        ['path', 'title', 'desc', 'body'].forEach(function(key) {
+          var value = String(note[key] == null ? '' : note[key]).trim();
+          if (!value) {
+            throw new Error('KI-Antwort ist ungültig: notes[' + index + '].' + key + ' fehlt.');
+          }
+        });
+        return makeNote(note);
+      });
+
+      var result = Object.assign({}, parsed);
+      result.notes = normalizedNotes;
+      return result;
+    }
+
+    function applyZettelkastenNotesFromResponse(raw) {
+      var parsed = parseZettelkastenResponse(raw);
+      S.notes = parsed.notes;
+      S.rawKiResponse = String(raw == null ? '' : raw);
+
+      var mocCount = 0;
+      var moc = normalizeMocIndex(S.mocIndex);
+      if (moc.bootstrapMode && Array.isArray(parsed.moc)) {
+        moc.entries = normalizeMocEntries(parsed.moc.map(function(entry) {
+          return makeMocEntry(entry);
+        }));
+        moc.bootstrapMode = false;
+        S.mocIndex = moc;
+        mocCount = moc.entries.length;
+      }
+
+      persistState();
+
+      var flashcardCount = parsed.notes.reduce(function(sum, note) {
+        return sum + (Array.isArray(note.flashcards) ? note.flashcards.length : 0);
+      }, 0);
+
+      return {
+        noteCount: parsed.notes.length,
+        flashcardCount: flashcardCount,
+        mocCount: mocCount
+      };
+    }
+
     function normalizeMocEntry(entry) {
       return makeMocEntry(entry);
     }
@@ -969,6 +1041,7 @@
         }
         S.generatedNotes = normalizeGeneratedNotes(S.generatedNotes);
         S.notes = normalizeNotes(S.notes);
+        S.rawKiResponse = String(S.rawKiResponse || '');
         S.structuredNotes = normalizeStructuredNotesPayload(S.structuredNotes);
         S.mocIndex = normalizeMocIndex(S.mocIndex);
         S.config = normalizeConfig(S.config);
